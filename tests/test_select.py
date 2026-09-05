@@ -128,6 +128,24 @@ def test_granular_taste_boosts_similar_cards(db, cfg, monkeypatch):
     assert boosts2[cards[1]["id"]] > 0 and boosts2[cards[2]["id"]] < 0
 
 
+def test_discovery_open_consumes_card(db, cfg):
+    """Morning deep-link tap = implicit serve: ready -> served, prompts enter
+    the FSRS loop (due +1d); the card will never be re-pushed."""
+    seed_three(db)
+    r = select.signal(db, cfg, 1, "discovery_open")
+    assert r["consumed"] is True
+    status = db.execute("SELECT status FROM cards WHERE id = 1").fetchone()["status"]
+    assert status == "served"
+    due = db.execute("SELECT due_at FROM prompts WHERE card_id = 1").fetchall()
+    assert all(d["due_at"] is not None for d in due)
+    # second tap: already served -> no double consume
+    r2 = select.signal(db, cfg, 1, "discovery_open")
+    assert r2["consumed"] is False
+    # plain signals never consume
+    select.signal(db, cfg, 2, "more_like_this")
+    assert db.execute("SELECT status FROM cards WHERE id = 2").fetchone()["status"] == "ready"
+
+
 def test_taste_zero_without_feedback(db, cfg):
     import mlearn.taste as taste_mod
     seed_three(db)
