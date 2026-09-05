@@ -168,9 +168,28 @@ def signal(conn, cfg: dict, card_id: int, kind: str) -> dict:
         new_cluster = novelty_mod.arm_birth(conn, cfg, card_row)
         if new_cluster is not None:
             conn.execute("UPDATE cards SET is_wildcard = 0 WHERE id = ?", (card_row["id"],))
+    consumed = False
+    if kind == "discovery_open" and card_row["status"] == "ready":
+        # Implicit consumption: a morning deep-link tap IS the serve. The card
+        # is marked served (never re-pushed) and its prompts enter the
+        # evening FSRS loop (due +1 day), exactly like a push serve.
+        conn.execute("UPDATE cards SET status = 'served', served_at = ? WHERE id = ?",
+                     (_iso(now()), card_id))
+        conn.execute(
+            "UPDATE prompts SET due_at = ? WHERE card_id = ? AND due_at IS NULL",
+            (_iso(now() + timedelta(days=1)), card_id))
+        src = conn.execute(
+            """SELECT s.id FROM sources s
+               JOIN items i ON i.source_id = s.id
+               JOIN cards c ON c.item_id = i.id
+               WHERE c.id = ?""", (card_id,)).fetchone()
+        if src:
+            conn.execute("UPDATE sources SET cards_served = cards_served + 1 WHERE id = ?",
+                         (src["id"],))
+        consumed = True
     conn.commit()
     return {"card_id": card_id, "kind": kind, "cluster": cluster["label"],
-            "alpha": alpha, "beta": beta}
+            "alpha": alpha, "beta": beta, "consumed": consumed}
 
 
 # ── allocation (spec 6.2 / Phase 4 Thompson; Phase 3 round-robin) ───────────
