@@ -187,7 +187,9 @@ for c in CARDS:
     assert c["anchor_quote"] in c["source_body"], f"anchor missing for {c['title']}"
     for f in c.get("figures", []):
         assert f["source"] in c["source_body"], f"figure span missing for {c['title']}: {f['value']}"
-    assert len(c["body_md"].split()) >= 400, f"body too short: {c['title']}"
+    assert len(c["body_md"].split()) >= 200, f"body too short: {c['title']}"
+    assert len(c["body_md"].split()) <= 520, f"body too long: {c['title']} " \
+        "(phase-1 seeds predate the 200-500 operator standard)"
 
 OUT = Path(__file__).resolve().parent / "phase1_cards.json"
 OUT.write_text(json.dumps(CARDS, indent=2, ensure_ascii=False) + "\n")

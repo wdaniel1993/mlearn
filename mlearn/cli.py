@@ -147,13 +147,17 @@ def generate(count: int = typer.Option(12, "--count", min=1,
                                        help="cards to produce this run"),
              harvest_items: bool = typer.Option(True, "--harvest/--no-harvest",
                                                 help="fetch new items first"),
+             regenerate: bool = typer.Option(False, "--regenerate",
+                                             help="archive ready pool and re-roll it"),
              json_out: bool = typer.Option(False, "--json")):
     """Discovery pipeline: harvest -> dedupe -> generate -> validate -> enqueue.
     Phase 2 allocation: round-robin over seed topics (bandit arrives in Phase 4)."""
     cfg = config_mod.resolve_paths(config_mod.load())
     conn = db_mod.connect(cfg["paths"]["db"])
     db_mod.init_db(conn)
-    result = generate_mod.run_generation(conn, cfg, count, do_harvest=harvest_items)
+    result = generate_mod.run_generation(conn, cfg, count,
+                                         do_harvest=harvest_items,
+                                         regenerate=regenerate)
     if json_out:
         _json_out(result)
     else:
@@ -268,6 +272,68 @@ def scout(json_out: bool = typer.Option(False, "--json")):
               f" | {len(promo['stayed'])} stayed (baseline {promo['baseline']})")
         for c in result["candidates"]:
             print(f"  candidate: {c['name']} ({c['topic']}, {c['citations']} cites)")
+
+
+@app.command()
+def card(card_id: int = typer.Argument(...),
+         json_out: bool = typer.Option(False, "--json")):
+    """Single card + its prompts (detail view for UIs)."""
+    cfg, conn = _load_runtime(json_out)
+    row = conn.execute(
+        """SELECT c.*, cl.label AS topic FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
+           WHERE c.id = ?""", (card_id,)
+    ).fetchone()
+    if row is None:
+        if json_out:
+            _json_out({"error": "card not found"})
+        else:
+            print("card not found")
+        raise typer.Exit(1)
+    prompts = conn.execute(
+        "SELECT id, question, answer, due_at, reps, lapses FROM prompts "
+        "WHERE card_id = ? ORDER BY id", (card_id,)
+    ).fetchall()
+    data = {**dict(row), "prompts": [dict(p) for p in prompts]}
+    if json_out:
+        _json_out(data)
+    else:
+        print(f"#{data['id']} [{data['topic']}] {data['title']} ({data['status']})")
+        print(f"  prompts: {len(data['prompts'])}")
+
+
+@app.command()
+def cards(status: str | None = typer.Option(None, help="ready|served|archived"),
+          topic: str | None = typer.Option(None),
+          limit: int = typer.Option(20, "--limit", min=1, max=100),
+          offset: int = typer.Option(0, "--offset", min=0),
+          json_out: bool = typer.Option(False, "--json")):
+    """Paginated card browse (for UIs/endless scroll)."""
+    cfg, conn = _load_runtime(json_out)
+    where, params = "WHERE 1=1", []
+    if status:
+        where += " AND c.status = ?"
+        params.append(status)
+    if topic:
+        where += " AND cl.label = ?"
+        params.append(topic)
+    total = conn.execute(
+        f"SELECT COUNT(*) n FROM cards c JOIN clusters cl ON cl.id = c.cluster_id {where}",
+        params,
+    ).fetchone()["n"]
+    rows = conn.execute(
+        f"""SELECT c.id, c.title, c.hook, c.status, c.source_url, c.anchor_quote,
+                   c.diagram_type, c.is_wildcard, c.created_at, c.served_at,
+                   cl.label AS topic
+            FROM cards c JOIN clusters cl ON cl.id = c.cluster_id {where}
+            ORDER BY c.id DESC LIMIT ? OFFSET ?""",
+        params + [limit, offset],
+    ).fetchall()
+    data = {"total": total, "limit": limit, "offset": offset,
+            "cards": [dict(r) for r in rows]}
+    if json_out:
+        _json_out(data)
+    else:
+        print(f"{len(rows)} of {total} cards (offset {offset})")
 
 
 @app.command()

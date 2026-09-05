@@ -6,8 +6,9 @@ import re
 import subprocess
 from pathlib import Path
 
-MIN_BODY_WORDS = 400
-MAX_BODY_WORDS = 1100
+# Operator standard (2026-09): short, scannable cards
+MIN_BODY_WORDS = 200
+MAX_BODY_WORDS = 500
 MAX_ANCHOR_WORDS = 25
 MIN_PROMPTS = 2
 

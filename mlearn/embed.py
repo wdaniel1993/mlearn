@@ -49,9 +49,13 @@ def cosine(a: list[float], b: list[float]) -> float:
 
 
 def card_pool(conn) -> list[tuple[int, list[float]]]:
-    """(card_id, embedding) for every card that has one."""
+    """(card_id, embedding) for every live card that has one (archived excluded —
+    regenerations would dedupe against their own old embeddings)."""
     pool = []
-    for row in conn.execute("SELECT id, embedding FROM cards WHERE embedding IS NOT NULL"):
+    for row in conn.execute(
+        "SELECT id, embedding FROM cards WHERE embedding IS NOT NULL "
+        "AND status != 'archived'"
+    ):
         vec = unpack_vec(row["embedding"])
         if vec:
             pool.append((row["id"], vec))

@@ -7,13 +7,13 @@ TOOLS = __import__("pathlib").Path(__file__).resolve().parent.parent / "tools"
 GOOD_MERMAID = "flowchart TD\n  A[Loop] --> B{Hoist?}\n  B -->|yes| C[Above]\n"
 BAD_MERMAID = "flowchart TD\n  A -->\n"
 
-BODY = ("lorem ipsum dolor sit amet " * 60)  # 360 words, below the 400 floor
-LONG_BODY = "word " * 1101
+BODY = ("lorem ipsum dolor sit amet " * 60)  # 360 words, within the 200-500 band
+LONG_BODY = "word " * 1101  # > 500: used for over-limit checks
 
 
 def base_card(**over):
     card = {
-        "title": "t", "hook": "h", "body_md": LONG_BODY[:4000],
+        "title": "t", "hook": "h", "body_md": "word " * 350,
         "diagram_type": "concept", "diagram_src": GOOD_MERMAID,
         "figures_json": None, "anchor_quote": "the quick brown fox",
         "prompts": [
@@ -67,6 +67,10 @@ def test_bad_mermaid_rejected():
 def test_word_count_bounds():
     short = base_card(body_md="short body")
     ok, errors = validate_card(short, BODY, TOOLS)
+    assert not ok
+    assert any("outside" in e for e in errors)
+    long = base_card(body_md=LONG_BODY)
+    ok, errors = validate_card(long, BODY, TOOLS)
     assert not ok
     assert any("outside" in e for e in errors)
 

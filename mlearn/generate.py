@@ -53,7 +53,7 @@ The JSON must have exactly these keys:
 {
   "title": "short, concrete title",
   "hook": "1-2 sentences on why this matters",
-  "body_md": "600-900 words, markdown, no headings above h3, mechanism-first teaching",
+  "body_md": "200-500 words, pyramid style, easy language",
   "diagram_type": "concept" or "data",
   "diagram_src": "one mermaid diagram, parse-valid syntax",
   "figures": [{"value": <number>, "source": "<verbatim span from the article>"}],
@@ -64,16 +64,26 @@ The JSON must have exactly these keys:
 Hard rules:
 - anchor_quote MUST appear character-for-character in the article text I give you, and be
   at most 25 words. Without a verbatim anchor the card is rejected.
-- body_md must be between 600 and 900 words — roughly 5 to 7 full paragraphs of dense,
-  mechanism-first teaching prose. Count your words before finishing; a 250-word body is
-  an automatic rejection. Teach the mechanism — how and why it works, with the article's
-  actual facts. No headings above h3. Never invent numbers.
-- The diagram must carry the core idea on its own: a reader who sees only the diagram gets
-  the point. Prefer flowchart, sequenceDiagram, stateDiagram-v2, mindmap for concepts,
-  xychart-beta or pie ONLY when the article itself provides the numbers.
+- body_md must be between 200 and 500 words — short, dense, scannable. Count your words
+  before finishing; a 700-word essay is an automatic rejection.
+- PYRAMID PRINCIPLE: open body_md with the single key takeaway as the first sentence —
+  the conclusion up front. Then support it with a few logical steps or mechanisms in
+  order, evidence or concrete numbers last.
+- EASY LANGUAGE: sentences of at most 20 words, everyday words, active voice. Define any
+  jargon inline the first time. Use concrete examples and numbers from the article.
+  One idea per paragraph; 2-4 item bullet lists are fine; bold the 2-3 key terms.
+- Audience: a busy professional reading for 5 minutes in English as a second language.
+  The card must be scannable in 90 seconds and still leave the mechanism understood.
+- Never invent numbers. No headings above h3.
+- The hook is the bottom line: the takeaway in one or two sentences, no hedging.
+- prompts must probe the takeaway and the key mechanism steps — never trivia.
+- title: short, concrete, benefit-oriented.
 - diagram_type='data' REQUIRES figures populated with numbers that all appear verbatim
   somewhere in the article, each with its exact source span. If the article has no usable
   numbers, use a concept diagram.
+- The diagram must carry the core idea on its own: a reader who sees only the diagram gets
+  the point. Prefer flowchart, sequenceDiagram, stateDiagram-v2, mindmap for concepts,
+  xychart-beta or pie ONLY when the article itself provides the numbers.
 - prompts: 2-4 recall questions, each answerable from body_md alone, each ending with '?'.
 
 {TGUARD}
@@ -84,6 +94,7 @@ every hard rule, respond with {"error": "short reason"} instead of a broken card
 USER = """Article: {title}
 URL: {url}
 Topic: {topic}
+Audience: busy professional, 5 minutes, English as a second language.
 
 ARTICLE TEXT (verbatim excerpt):
 {body}
@@ -199,9 +210,12 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
     return None, reasons
 
 
-def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True) -> dict:
+def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True,
+                   regenerate: bool = False) -> dict:
     """Phase-2 pipeline: dedupe -> generate -> validate -> enqueue.
-    Allocation: round-robin over seed topics (bandit arrives in Phase 4)."""
+    Allocation: round-robin over seed topics (bandit arrives in Phase 4).
+    regenerate=True: archive the ready pool and re-roll it (prompt/style
+    changes; old cards stay in the DB as history via status='archived')."""
     from . import harvest as harvest_mod
 
     log_path = Path(cfg["paths"]["data_dir"]) / "logs" / "generate.log"
@@ -214,6 +228,17 @@ def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True) -> dict
     if do_harvest:
         r = harvest_mod.harvest(conn, cfg)
         note(f"harvest: {r}")
+
+    if regenerate:
+        rows = conn.execute(
+            """SELECT c.id AS card_id, i.id AS item_id FROM cards c
+               JOIN items i ON i.id = c.item_id WHERE c.status = 'ready'"""
+        ).fetchall()
+        for r in rows:
+            conn.execute("UPDATE cards SET status = 'archived' WHERE id = ?", (r["card_id"],))
+            conn.execute("UPDATE items SET processed = 0 WHERE id = ?", (r["item_id"],))
+        conn.commit()
+        note(f"regenerate: archived {len(rows)} ready cards for re-roll")
 
     pool = embed_mod.card_pool(conn)
     threshold = cfg["dedupe_threshold"]
