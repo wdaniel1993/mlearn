@@ -85,7 +85,16 @@ Hard rules:
   the layers in order").
 - EASY LANGUAGE: sentences of at most 20 words, everyday words, active voice. Define any
   jargon inline the first time. Use concrete examples and numbers from the article.
-  One idea per paragraph; 2-4 item bullet lists are fine; bold the 2-3 key terms.
+  One idea per paragraph.
+- SCANNABLE FORMATTING (digestion over prose): structure body_md like a well-laid-out
+  note, not an essay — proper markdown headings (h2/h3, never h1) to separate sections;
+  numbered or bullet lists for steps, stages, and enumerations; a markdown table when
+  comparing 2-4 options or dimensions (columns such as mechanism | why it works |
+  example); bold the 2-4 key terms and italicize the takeaway. Walls of plain prose are
+  an automatic rejection. Structure must not bloat the card: keep the 200-500 word
+  budget and the pyramid principle.
+- mini-app renders markdown: headings, lists, tables, bold/italic, and the mermaid
+  diagram all render natively — use them.
 - Audience: a busy professional reading for 5 minutes in English as a second language.
   The card must be scannable in 90 seconds and still leave the mechanism understood.
 - Never invent numbers. No headings above h3.
