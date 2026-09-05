@@ -67,9 +67,8 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
         (since, since),
     ).fetchall()
     written: list[Path] = []
-    live_ids: set[int] = set()
+    expected: set[Path] = set()
     for card in rows:
-        live_ids.add(card["id"])
         prompts = conn.execute(
             "SELECT * FROM prompts WHERE card_id = ? ORDER BY id", (card["id"],)
         ).fetchall()
@@ -77,23 +76,25 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
         topic_dir.mkdir(parents=True, exist_ok=True)
         path = topic_dir / f"{card['created_at'][:10]}-{slugify(card['title'])}.md"
         path.write_text(render_card(card, prompts), encoding="utf-8")
+        expected.add(path)
         written.append(path)
-    _prune_stale(cards_dir, live_ids)
+    _prune_stale(cards_dir, expected)
     return written
 
 
-def _prune_stale(cards_dir: Path, live_ids: set[int]) -> int:
-    """Remove .md files whose frontmatter id is not in live_ids."""
+def _prune_stale(cards_dir: Path, expected: set[Path]) -> int:
+    """Remove .md files that this projection run did not write.
+
+    Covers dead card ids AND files from older DB generations whose ids were
+    reused by new cards (a plain id check would keep them alive forever)."""
     removed = 0
     if not cards_dir.is_dir():
         return 0
     for md in cards_dir.rglob("*.md"):
-        head = md.read_text(errors="ignore")[:400]
-        m = re.search(r"^id:\s*(\d+)\s*$", head, re.M)
-        if not m or int(m.group(1)) not in live_ids:
-            try:
+        try:
+            if md.resolve() not in expected:
                 md.unlink()
                 removed += 1
-            except OSError:
-                pass
+        except OSError:
+            pass
     return removed
