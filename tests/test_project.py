@@ -33,6 +33,18 @@ def test_write_cards_regenerates_identically(tmp_path, db):
     assert [p for p in paths2 if p.parent.name == "finance"][0].read_text() == content1
 
 
+def test_write_cards_prunes_archived(tmp_path, db):
+    ids = seed_three(db)
+    db.execute("UPDATE cards SET status = 'archived' WHERE id = ?", (ids[0],))
+    db.commit()
+    paths = write_cards(db, tmp_path / "cards")
+    assert len(paths) == 2
+    remaining = [p for p in (tmp_path / "cards").rglob("*.md")]
+    assert len(remaining) == 2
+    for p in remaining:
+        assert f"id: {ids[0]}" not in p.read_text()[:400]
+
+
 def test_slugify_path_safe():
     assert "/" not in slugify("a/b/c")
     assert slugify("")  # falls back to "card"

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -54,17 +53,23 @@ def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row]) -> str:
 
 def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
                 since: str | None = None) -> list[Path]:
-    """Regenerate the full (or since-date) markdown projection. Returns paths."""
+    """Regenerate the markdown projection. Returns paths.
+
+    Archived cards are NOT written (a re-rolled card replaces its old file),
+    and stale files — present on disk but with no live card id in the DB —
+    are pruned so Obsidian never shows obsolete content."""
     cards_dir = Path(cards_dir)
-    cards = conn.execute(
+    rows = conn.execute(
         """SELECT c.*, cl.label AS cluster_label
            FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
-           WHERE (? IS NULL OR c.created_at >= ?)
+           WHERE (? IS NULL OR c.created_at >= ?) AND c.status != 'archived'
            ORDER BY c.id""",
         (since, since),
     ).fetchall()
     written: list[Path] = []
-    for card in cards:
+    live_ids: set[int] = set()
+    for card in rows:
+        live_ids.add(card["id"])
         prompts = conn.execute(
             "SELECT * FROM prompts WHERE card_id = ? ORDER BY id", (card["id"],)
         ).fetchall()
@@ -73,4 +78,22 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
         path = topic_dir / f"{card['created_at'][:10]}-{slugify(card['title'])}.md"
         path.write_text(render_card(card, prompts), encoding="utf-8")
         written.append(path)
+    _prune_stale(cards_dir, live_ids)
     return written
+
+
+def _prune_stale(cards_dir: Path, live_ids: set[int]) -> int:
+    """Remove .md files whose frontmatter id is not in live_ids."""
+    removed = 0
+    if not cards_dir.is_dir():
+        return 0
+    for md in cards_dir.rglob("*.md"):
+        head = md.read_text(errors="ignore")[:400]
+        m = re.search(r"^id:\s*(\d+)\s*$", head, re.M)
+        if not m or int(m.group(1)) not in live_ids:
+            try:
+                md.unlink()
+                removed += 1
+            except OSError:
+                pass
+    return removed

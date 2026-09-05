@@ -215,7 +215,32 @@ def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True,
     """Phase-2 pipeline: dedupe -> generate -> validate -> enqueue.
     Allocation: round-robin over seed topics (bandit arrives in Phase 4).
     regenerate=True: archive the ready pool and re-roll it (prompt/style
-    changes; old cards stay in the DB as history via status='archived')."""
+    changes; old cards stay in the DB as history via status='archived').
+
+    A generation lock (fcntl flock) prevents concurrent runs (e.g. the
+    hourly tick racing a manual run): two pipelines loading their dedupe
+    pools simultaneously can both insert a card for the same item."""
+    import fcntl
+
+    lock_path = Path(cfg["paths"]["data_dir"]) / "generate.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fh = open(lock_path, "w")
+    try:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_fh.close()
+        log.warning("generation already running (lock held); skipping")
+        return {"made": 0, "skipped_dupes": 0, "failed": 0, "card_ids": [],
+                "projected": 0, "locked": True}
+    try:
+        return _run_generation_locked(conn, cfg, count, do_harvest, regenerate)
+    finally:
+        fcntl.flock(lock_fh, fcntl.LOCK_UN)
+        lock_fh.close()
+
+
+def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
+                           regenerate: bool) -> dict:
     from . import harvest as harvest_mod
 
     log_path = Path(cfg["paths"]["data_dir"]) / "logs" / "generate.log"
