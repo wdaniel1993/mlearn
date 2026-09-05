@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import sqlite3
 import time
 import urllib.robotparser
 from datetime import datetime, timezone
@@ -18,7 +19,7 @@ import httpx
 
 log = logging.getLogger("mlearn.harvest")
 
-UA = "mlearn/0.2 (+https://github.com/wdaniel1993/mlearn; personal research engine)"
+UA = "mlearn/0.3 (+https://github.com/wdaniel1993/mlearn; personal learning engine)"
 
 MAX_ITEMS_PER_SOURCE = 15
 DELAY_SECONDS = 1.2
@@ -157,17 +158,76 @@ def _retry_after(value: str | None) -> float:
         return 1.0
 
 
-def _wikipedia_items(src, raw_dir: Path) -> tuple[list[dict], list[str]]:
-    """Curated page-catalog items (source meta kind='wikipedia')."""
+def _wiki_url(title: str) -> str:
+    return "https://en.wikipedia.org/wiki/" + title.strip().replace(" ", "_")
+
+
+def _concept_candidate(title: str) -> bool:
+    """A link worth harvesting from a list article: real concept pages only."""
+    if ":" in title:
+        return False
+    low = title.lower()
+    for prefix in ("list of ", "index of ", "outline of ", "glossary of ",
+                   "timeline of ", "bibliography of "):
+        if low.startswith(prefix):
+            return False
+    return True
+
+
+def _wiki_list_titles(list_title: str) -> list[str]:
+    """Concept titles linked from a human-curated Wikipedia list article."""
+    params = {"action": "query", "prop": "links", "titles": list_title,
+              "pllimit": "500", "format": "json"}
+    headers = {"User-Agent": WIKI_UA}
+    out: list[str] = []
+    with httpx.Client(timeout=BODY_TIMEOUT, follow_redirects=True) as client:
+        r = client.get(WIKI_API, params=params, headers=headers)
+        r.raise_for_status()
+        for pg in r.json().get("query", {}).get("pages", {}).values():
+            for link in pg.get("links", []):
+                t = link.get("title", "")
+                if _concept_candidate(t):
+                    out.append(t)
+    return out
+
+
+def _wiki_items(source_row: sqlite3.Row, raw_dir: Path,
+                conn: sqlite3.Connection) -> tuple[list[dict], list[str]]:
+    """Curated page-catalog items (source meta kind='wikipedia') plus concept
+    discovery: human-curated list articles feed new candidate titles, capped per
+    run and skipped when the page already exists as an item."""
+    src = dict(source_row)
     try:
         meta = json.loads(src["meta"])
     except (TypeError, ValueError):
         return [], [f"{src['name']}: malformed meta"]
     pages = meta.get("pages", [])
+    lists = meta.get("lists", [])
+    budget = int(meta.get("discovery_budget", 5))
+    seen = {r["url"] for r in conn.execute(
+        "SELECT url FROM items WHERE url LIKE 'https://en.wikipedia.org/wiki/%'")}
+    reasons: list[str] = []
+    pending: list[str] = list(pages)[:MAX_WIKI_PAGES]  # curated catalog cap
+    discovered = 0
+    for list_title in lists[:3]:
+        try:
+            for t in _wiki_list_titles(list_title):
+                if discovered >= budget:  # discovery adds ON TOP of the catalog
+                    break
+                if t not in pending and _wiki_url(t) not in seen:
+                    pending.append(t)
+                    discovered += 1
+        except Exception as e:  # a dead list must not sink the source
+            reasons.append(f"{src['name']}: list '{list_title}' failed: {e}")
+    if discovered:
+        reasons.append(f"{src['name']}: discovered {discovered} concept candidates from lists")
     items: list[dict] = []
-    for title in pages[:MAX_WIKI_PAGES]:
-        url = "https://en.wikipedia.org/wiki/" + title.strip().replace(" ", "_")
+    for title in pending:
+        url = _wiki_url(title)
+        if url in seen:
+            continue
         text, lastmod = _wiki_extract(title)
+        seen.add(url)
         if not text:
             continue
         h = hashlib.sha1(text.encode("utf-8")).hexdigest()
@@ -177,12 +237,11 @@ def _wikipedia_items(src, raw_dir: Path) -> tuple[list[dict], list[str]]:
             "url": url,
             "title": title.strip().replace("_", " "),
             "published_at": lastmod,
-            "body_is_text": True,
             "content_hash": h,
             "raw_path": str(path),
         })
         time.sleep(DELAY_SECONDS)
-    return items, []
+    return items, reasons
 
 
 def harvest(conn, cfg: dict) -> dict:
@@ -204,7 +263,7 @@ def harvest(conn, cfg: dict) -> dict:
                 meta = None
         if meta and meta.get("kind") == "wikipedia":
             # Public-API source: no robots gate (see WIKI_API note), own fetcher.
-            wiki_items, wiki_errs = _wikipedia_items(src, raw_dir)
+            wiki_items, wiki_errs = _wiki_items(src, raw_dir, conn)
             reasons.extend(wiki_errs)
             for it in wiki_items:
                 url = it["url"]

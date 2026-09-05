@@ -125,7 +125,7 @@ def test_thompson_floor_and_shift(db, cfg):
 def test_decay_pulls_posteriors_toward_1(db, cfg):
     db.execute("UPDATE clusters SET alpha = 10.0, beta = 10.0, last_updated = '2020-01-01T00:00:00+00:00'")
     res = select.decay_clusters(db, cfg)
-    assert res["decayed"] == 5
+    assert res["decayed"] == 6
     row = db.execute("SELECT alpha, beta FROM clusters LIMIT 1").fetchone()
     assert row["alpha"] == pytest_approx(1 + 9 * 0.95)
     assert row["beta"] == pytest_approx(1 + 9 * 0.95)

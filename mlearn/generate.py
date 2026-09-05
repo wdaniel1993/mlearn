@@ -43,6 +43,11 @@ TOPIC_GUARDRAILS = {
     ),
     "technology": "Topic technology — explain the mechanism of the technology: how it works, why.",
     "innovation": "Topic innovation — explain the mechanism behind the innovation or idea.",
+    "psychology": (
+        "Topic psychology — how the mind works: mechanisms, biases, effects, and their "
+        "evidence. NEVER diagnostic, NEVER prescriptive: no therapy guidance, no coping "
+        "advice, no 'this means you' claims. Describe the phenomenon and the studies."
+    ),
 }
 
 SYSTEM = """You are the content engine of a personal microlearning system. You transform one

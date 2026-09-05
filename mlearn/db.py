@@ -147,6 +147,7 @@ SEED_TOPICS = [
     "innovation",
     "technology",
     "finance",
+    "psychology",
 ]
 
 

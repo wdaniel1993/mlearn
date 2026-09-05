@@ -1,8 +1,11 @@
 # mlearn source allowlist — the shared, forkable commons.
 # status: candidate | probation | trusted | blacklisted
 # Fields: name, url, feed_url, topic, status, notes (optional)
+# Wikipedia sources: meta.kind = wikipedia, meta.pages = curated concept catalog,
+#   meta.lists = discovery via human-curated list articles ("List of …"),
+#   meta.discovery_budget = new concept candidates per list per harvest run.
 # Topics seed the initial clusters: self_improvement, mental_health,
-# innovation, technology, finance
+# innovation, technology, finance, psychology
 
 sources:
   - name: Ars Technica
@@ -42,9 +45,30 @@ sources:
   - name: PsyBlog
     url: https://www.spring.org.uk
     feed_url: https://www.spring.org.uk/feed
-    topic: mental_health
+    topic: psychology
     status: trusted
-    notes: study-based psychology mechanism summaries
+    notes: psychology research summaries — mechanisms, not advice
+
+  - name: Ness Labs
+    url: https://nesslabs.com
+    feed_url: https://nesslabs.com/feed
+    topic: psychology
+    status: candidate
+    notes: neuroscience-informed essays on thinking and attention
+
+  - name: Psyche
+    url: https://psyche.co
+    feed_url: https://psyche.co/feed
+    topic: psychology
+    status: candidate
+    notes: essays on the human mind from psychology and philosophy
+
+  - name: Aeon
+    url: https://aeon.co
+    feed_url: https://aeon.co/feed
+    topic: psychology
+    status: candidate
+    notes: longform ideas on mind, society, and science
 
   - name: NIMH News
     url: https://www.nimh.nih.gov
@@ -90,6 +114,8 @@ sources:
         - Ion thruster
         - JPEG
         - Radio telescope
+      lists:
+        - List of algorithms
 
   - name: Wikipedia · Finance
     url: https://en.wikipedia.org?topic=finance
@@ -112,6 +138,8 @@ sources:
         - Market liquidity
         - Dollar-cost averaging
         - Option (finance)
+      lists:
+        - List of economics topics
 
   - name: Wikipedia · Mental Health
     url: https://en.wikipedia.org?topic=mental_health
@@ -134,6 +162,8 @@ sources:
         - Learned helplessness
         - Cognitive dissonance
         - Habituation
+      lists:
+        - Index of psychology articles
 
   - name: Wikipedia · Self Improvement
     url: https://en.wikipedia.org?topic=self_improvement
@@ -156,6 +186,8 @@ sources:
         - Parkinson's law
         - Zeigarnik effect
         - Dunning–Kruger effect
+      lists:
+        - List of eponymous laws
 
   - name: Wikipedia · Innovation
     url: https://en.wikipedia.org?topic=innovation
@@ -176,3 +208,31 @@ sources:
         - Long tail
         - Minimum viable product
         - Technology acceptance model
+      lists:
+        - Index of innovation-related articles
+
+  - name: Wikipedia · Psychology
+    url: https://en.wikipedia.org?topic=psychology
+    feed_url: null
+    topic: psychology
+    status: probation
+    notes: curated concept catalog + list discovery — how the mind works
+    meta:
+      kind: wikipedia
+      pages:
+        - Cognitive bias
+        - Availability heuristic
+        - Confirmation bias
+        - Anchoring (cognitive bias)
+        - Halo effect
+        - Mere-exposure effect
+        - Fundamental attribution error
+        - Bystander effect
+        - Gambler's fallacy
+        - Illusory correlation
+        - Self-serving bias
+        - Planning fallacy
+      lists:
+        - List of cognitive biases
+        - List of effects
+        - List of memory biases

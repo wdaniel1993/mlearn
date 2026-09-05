@@ -11,7 +11,7 @@ from conftest import seed_three
 
 
 def test_init_creates_schema_and_seed_clusters(db):
-    assert db.execute("SELECT COUNT(*) n FROM clusters WHERE is_seed = 1").fetchone()["n"] == 5
+    assert db.execute("SELECT COUNT(*) n FROM clusters WHERE is_seed = 1").fetchone()["n"] == 6
     assert db.execute("SELECT COUNT(*) n FROM profile").fetchone()["n"] == 1
     assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
