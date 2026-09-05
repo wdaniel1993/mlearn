@@ -249,6 +249,48 @@ def _pick_ready_card(conn, policy: str, weights: dict[int, float] | None,
     return cands[-1][0]
 
 
+def decide(conn, cfg: dict, card_id: int, action: str) -> dict:
+    """Tinder-mode decision: feedback + consumption in one move.
+
+    like    -> more_like_this signal, card served, prompts enter the
+               evening FSRS loop (due +1 day)
+    dislike -> less_like_this signal, card served, prompts NOT scheduled
+    skip    -> skip signal, card served, prompts NOT scheduled
+
+    The card leaves the ready deck either way (semantic: a swiped card has
+    been seen), keeping the FIFO send order consistent with the deck view.
+    """
+    mapping = {"like": "more_like_this", "dislike": "less_like_this",
+               "skip": "skip"}
+    if action not in mapping:
+        raise ValueError(f"action must be one of {sorted(mapping)}, got {action!r}")
+    res = signal(conn, cfg, card_id, mapping[action])
+    card_row = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,)).fetchone()
+    if card_row is None:
+        raise KeyError(f"no card {card_id}")
+    if card_row["status"] == "ready":
+        conn.execute("UPDATE cards SET status = 'served', served_at = ? WHERE id = ?",
+                     (_iso(now()), card_id))
+        if action == "like":
+            conn.execute(
+                "UPDATE prompts SET due_at = ? WHERE card_id = ? AND due_at IS NULL",
+                (_iso(now() + timedelta(days=1)), card_id))
+        src = conn.execute(
+            """SELECT s.id FROM sources s
+               JOIN items i ON i.source_id = s.id
+               JOIN cards c ON c.item_id = i.id
+               WHERE c.id = ?""", (card_id,)).fetchone()
+        if src:
+            conn.execute("UPDATE sources SET cards_served = cards_served + 1 WHERE id = ?",
+                         (src["id"],))
+    conn.commit()
+    nxt = conn.execute(
+        "SELECT id FROM cards WHERE status = 'ready' ORDER BY id LIMIT 1"
+    ).fetchone()
+    return {"card_id": card_id, "action": action, "consumed": True,
+            "next_ready": nxt["id"] if nxt else None}
+
+
 # ── serving (spec 6.5) ──────────────────────────────────────────────────────
 
 def _payload(conn, card_row, kind: str, prompts) -> dict:
