@@ -135,6 +135,23 @@ def test_granular_taste_shapes_acquisition_not_sending(db, cfg, monkeypatch):
     assert pick is not None and pick["id"] == 1
 
 
+def test_search_empty_query_fifo_browse(db, cfg):
+    """Mini-app browse with no query: oldest live card first (FIFO, matching
+    serving); queries flip to relevance order; status filter applies."""
+    seed_three(db)
+    r = select.search(db, cfg, "")
+    assert [c["id"] for c in r["cards"]] == [1, 2, 3]
+    assert r["total"] == 3
+    db.execute("UPDATE cards SET status = 'served', served_at = ? WHERE id = 1",
+               (select._iso(select.now()),))
+    db.commit()
+    r2 = select.search(db, cfg, "", status="ready")
+    assert [c["id"] for c in r2["cards"]] == [2, 3]
+    assert r2["total"] == 2
+    r3 = select.search(db, cfg, "", status="served")
+    assert [c["id"] for c in r3["cards"]] == [1]
+
+
 def test_discovery_open_consumes_card(db, cfg):
     """Morning deep-link tap = implicit serve: ready -> served, prompts enter
     the FSRS loop (due +1d); the card will never be re-pushed."""
