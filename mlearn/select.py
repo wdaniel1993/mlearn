@@ -291,20 +291,9 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
 
     served_cards: list[int] = []
     prompts_to_create: list[tuple[int, str | None]] = []
-    wc_picked = False
-    ready_count = conn.execute(
-        "SELECT COUNT(*) n FROM cards WHERE status = 'ready'").fetchone()["n"]
     for _ in range(allowed):
-        card_row = None
-        if (not wc_picked and random.random() < cfg["wildcard_rate"]
-                and ready_count >= cfg.get("wildcard_min_ready", 6)):
-            from . import novelty as novelty_mod
-            card_row = novelty_mod.pick_wildcard(conn, cfg)
-            if card_row is not None:
-                wc_picked = True
-        if card_row is None:
-            card_row = _pick_ready_card(conn, policy, weights,
-                                        exclude=set(served_cards))
+        card_row = _pick_ready_card(conn, policy, weights,
+                                    exclude=set(served_cards))
         if card_row is None:
             break
         cluster_label = conn.execute("SELECT label FROM clusters WHERE id = ?",

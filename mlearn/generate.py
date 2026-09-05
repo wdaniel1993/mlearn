@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -295,6 +296,8 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
     topics = db_mod.SEED_TOPICS
     made = skipped = failed = 0
     cards_out = []
+    wc_done = False  # one wildcard slot per run (bubble counter)
+    wc_rate = cfg.get("wildcard_rate", 0.15)
     # Phase 2: round-robin over topics.
     for round_i in range(1000):
         if made >= count:
@@ -305,8 +308,39 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
             item = None
             text = ""
             vec: list[float] | None = None
+            is_wc = False
+            # Acquisition 1: wildcard slot — once per run, touch the LEAST
+            # covered topic (no taste involvement whatsoever), so unheard
+            # lanes keep appearing and the filter bubble stays porous.
+            # Liking the generated card later births a new cluster
+            # (novelty.arm_birth), which is how new topics are born.
+            if not wc_done and random.random() < wc_rate:
+                least = conn.execute(
+                    """SELECT s.topic AS topic, COUNT(c.id) AS n
+                       FROM sources s
+                       JOIN items i ON i.source_id = s.id AND i.processed = 0
+                       LEFT JOIN cards c ON c.item_id = i.id AND c.status != 'archived'
+                       GROUP BY s.topic ORDER BY n ASC, s.topic LIMIT 1"""
+                ).fetchone()
+                if least is not None:
+                    wc_item = conn.execute(
+                        """SELECT i.* FROM items i
+                           JOIN sources s ON s.id = i.source_id
+                           WHERE i.processed = 0 AND s.topic = ?
+                           ORDER BY i.id LIMIT 1""", (least["topic"],),
+                    ).fetchone()
+                    if wc_item is not None:
+                        txt = item_text(wc_item["raw_path"], wc_item["title"])
+                        if len(txt) >= 120:
+                            item = wc_item
+                            text = txt
+                            vec = embed_mod.embed_one(wc_item["title"] + ". " + txt[:1400])
+                            is_wc = True
+                            wc_done = True
+                            note(f"wildcard acquisition: {wc_item['title']!r} "
+                                 f"(topic={least['topic']}, coverage={least['n']})")
             strength = cfg.get("taste_strength", 0.0)
-            if strength > 0:
+            if item is None and strength > 0:
                 # acquisition: embedding-level taste decides WHICH unprocessed
                 # item becomes a card; send order stays FIFO (next_cards)
                 cands = conn.execute(
@@ -375,7 +409,7 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                 figures_json=card["figures_json"], source_url=item["url"],
                 anchor_quote=card["anchor_quote"],
                 embedding=embed_mod.pack(vec) if vec else None,
-                prompts=card["prompts"],
+                prompts=card["prompts"], is_wildcard=is_wc,
             )
             conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (item["id"],))
             conn.commit()
