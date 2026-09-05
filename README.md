@@ -100,12 +100,13 @@ generation runs (tick vs manual batch).
 ## Deployed on the Mac Mini
 
 - **Morning push** 08:00 — `mlearn_push.py`: concept prospecting, then up to 5
-  discovery hooks, each with a `t.me/<bot>?startapp=learn/<id>/disc` deep link;
-  tapping the link opens the card in the app and counts as implicit positive
+  discovery hooks, each with an inline **web_app button** (TR pattern:
+  `https://mac.tail34194b.ts.net/?startapp=learn_<id>_disc`); tapping the
+  button opens the card in the app and counts as implicit positive
   feedback (`discovery_open`)
 - **Evening push** 19:00 — `mlearn_retention.py`: up to 5 due recall prompts,
-  each with a `learn/<id>/ret` deep link back to the card; sends are acked
-  (due +1 day), FSRS rescheduling happens via in-app grades
+  each with a `learn_<id>_ret` web_app button back to the card; sends are
+  acked (due +1 day), FSRS rescheduling happens via in-app grades
 - Hourly tick (buffer refill) — generation lock protected
 - Obsidian projection into `~/dev/private-notes/Learning/mlearn/cards/`
   (pruned: only live cards are projected)
