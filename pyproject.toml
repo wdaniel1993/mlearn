@@ -1,0 +1,31 @@
+[project]
+name = "mlearn"
+version = "0.1.0"
+description = "Headless microlearning engine — scout, harvest, generate, validate, retain."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.12",
+  "PyYAML>=6.0",
+  "feedparser>=6.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+fsrs = ["fsrs>=4.0"]
+embed = ["fastembed>=0.3"]
+api = ["fastapi>=0.110", "uvicorn>=0.29"]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+mlearn = "mlearn.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mlearn"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

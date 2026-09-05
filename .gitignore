@@ -1,0 +1,22 @@
+# Private runtime data — never commit
+data/
+cards/
+*.db
+*.db-wal
+*.db-shm
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node tooling (mermaid parser)
+tools/node_modules/
+
+# Secrets
+.env
+config.yaml   # machine-specific (paths, provider), see config.yaml.example
+
+# OS
+.DS_Store

@@ -1,0 +1,61 @@
+# mlearn source allowlist — the shared, forkable commons.
+# status: candidate | probation | trusted | blacklisted
+# Fields: name, url, feed_url, topic, status, notes (optional)
+# Topics seed the initial clusters: self_improvement, mental_health,
+# innovation, technology, finance
+
+sources:
+  - name: Ars Technica
+    url: https://arstechnica.com
+    feed_url: https://feeds.arstechnica.com/arstechnica/index
+    topic: technology
+    status: trusted
+    notes: mechanisms of computing, systems, hardware
+
+  - name: IEEE Spectrum
+    url: https://spectrum.ieee.org
+    feed_url: https://spectrum.ieee.org/feeds/feed.rss
+    topic: technology
+    status: trusted
+    notes: engineering deep dives
+
+  - name: Quanta Magazine
+    url: https://www.quantamagazine.org
+    feed_url: https://www.quantamagazine.org/feed/
+    topic: innovation
+    status: trusted
+    notes: mathematics, physics, computer science — high mechanism density
+
+  - name: MIT Technology Review
+    url: https://www.technologyreview.com
+    feed_url: https://www.technologyreview.com/feed/
+    topic: innovation
+    status: trusted
+
+  - name: A Wealth of Common Sense
+    url: https://awealthofcommonsense.com
+    feed_url: https://awealthofcommonsense.com/feed/
+    topic: finance
+    status: trusted
+    notes: how markets and instruments work
+
+  - name: NIMH News
+    url: https://www.nimh.nih.gov
+    feed_url: https://www.nimh.nih.gov/rss/news
+    topic: mental_health
+    status: trusted
+    notes: mechanism and research only — never prescriptive
+
+  - name: Cal Newport
+    url: https://www.calnewport.com
+    feed_url: https://www.calnewport.com/feed/
+    topic: self_improvement
+    status: probation
+    notes: primary accounts of practice; needs study/data anchor
+
+  - name: LessWrong
+    url: https://www.lesswrong.com
+    feed_url: https://www.lesswrong.com/feed.xml
+    topic: self_improvement
+    status: trusted
+    notes: rationality, evidence, cognition

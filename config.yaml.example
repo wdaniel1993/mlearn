@@ -1,0 +1,55 @@
+# mlearn configuration — all knobs in one place.
+# Copy to config.yaml (gitignored) and adjust.
+
+# --- Buffer (never generate on the critical path of a request) ---
+buffer_target: 20        # aim for this many status='ready' cards
+buffer_floor: 8          # drop below -> trigger a generation run
+batch_size: 12           # cards produced per run
+
+# --- Serving ---
+daily_cap: 5             # max cards served per day (notification fatigue guard)
+discovery_ratio: 0.7     # discovery vs retention interleave (default 70/30)
+retention_target: 0.9    # FSRS retention target
+
+# --- Novelty / exploration ---
+wildcard_rate: 0.15      # share of generation slots for wildcard topics
+exploration_floor: 0.03  # min allocation probability per cluster
+
+# --- Dedupe / profile ---
+dedupe_threshold: 0.92   # cosine above this -> near-duplicate, discard
+profile_lambda: 0.1      # EMA step for the interest vector
+
+# --- Taste decay (weekly) ---
+decay_factor: 0.95
+
+# --- Source probation ---
+probation_cards: 20      # served cards before promotion review
+max_probation_sources: 3 # cap on concurrent probation sources
+
+# --- Paths ---
+paths:
+  data_dir: data
+  raw_dir: data/raw
+  cards_dir: cards        # markdown projection output
+  db: data/app.db
+  sources: sources.yaml
+  config: config.yaml
+
+# --- Generation model (operator-set) ---
+generate:
+  provider: openrouter    # openrouter | local (OpenAI-compatible endpoint)
+  model: anthropic/claude-3.5-haiku
+  base_url: https://openrouter.ai/api/v1
+  api_key_env: OPENROUTER_API_KEY
+  temperature: 0.4
+  max_retries: 3
+
+# --- Embeddings (always local — small model, rarely re-embedded) ---
+embed:
+  provider: local
+  model: BAAI/bge-small-en-v1.5
+
+# --- Optional read API ---
+api:
+  host: 127.0.0.1
+  port: 8311
