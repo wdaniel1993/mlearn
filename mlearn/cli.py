@@ -213,6 +213,20 @@ def signal(card_id: int = typer.Argument(...),
 
 
 @app.command()
+def decide(card_id: int = typer.Argument(...),
+           action: str = typer.Argument(..., help="like|dislike|skip"),
+           json_out: bool = typer.Option(False, "--json")):
+    """Tinder-mode decision: feedback + consume in one move (deck shrinks)."""
+    cfg, conn = _load_runtime(json_out)
+    result = select_mod.decide(conn, cfg, card_id, action)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"decide {result['action']} on card {result['card_id']}"
+              f" -> next ready: {result['next_ready']}")
+
+
+@app.command()
 def due(count: int = typer.Option(5, "--count", min=1, max=20),
         json_out: bool = typer.Option(False, "--json")):
     """Due recall prompts for the EVENING spaced-repetition push."""

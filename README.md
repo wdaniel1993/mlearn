@@ -40,6 +40,7 @@ mlearn due --count 5    # EVENING push: due recall prompts (spaced repetition)
 mlearn ack <prompt_id>  # acknowledge an evening reminder (due +1 day)
 mlearn grade <prompt_id> <1-4>   # the only external write path
 mlearn signal <card_id> <kind>   # more_like_this|less_like_this|skip|discovery_open
+mlearn decide <card_id> <action> # tinder/deck mode: like|dislike|skip = feedback + consume
 mlearn search "query"   # semantic search over cards
 mlearn cards            # browse/paginate cards
 mlearn card <id>        # one card + its recall prompts
@@ -91,6 +92,8 @@ gates, topic guardrails, dedupe.
 - [x] Two-window day: morning discovery (hook + deep link; tap = implicit signal),
       evening spaced repetition (`due` prompts with deep links)
 - [x] Granular taste — embedding-level, applied at ACQUISITION (which items become cards; like this *concept*, not this *category*); sending stays strict FIFO
+- [x] Deck mode — tinder-style FIFO swiping in the mini app: like/dislike/skip
+      = feedback + consumption (like schedules SR prompts; deck shrinks)
 
 41 tests. Generation runs on the local OpenAI-compatible endpoint
 (`deepseek-v4-flash` through opencode-go); a flock guard prevents concurrent

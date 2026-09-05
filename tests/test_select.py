@@ -135,6 +135,31 @@ def test_granular_taste_shapes_acquisition_not_sending(db, cfg, monkeypatch):
     assert pick is not None and pick["id"] == 1
 
 
+def test_decide_tinder_consume(db, cfg):
+    """Tinder swipe = feedback + consume: like schedules SR prompts, dislike/
+    skip consume without scheduling; deck advances FIFO."""
+    seed_three(db)
+    # like: served + prompts due tomorrow + positive signal
+    r = select.decide(db, cfg, 1, "like")
+    assert r["consumed"] and r["next_ready"] == 2
+    assert db.execute("SELECT status FROM cards WHERE id=1").fetchone()["status"] == "served"
+    due = db.execute("SELECT due_at FROM prompts WHERE card_id=1").fetchall()
+    assert all(d["due_at"] is not None for d in due)
+    sig = db.execute("SELECT kind FROM signals WHERE card_id=1").fetchone()["kind"]
+    assert sig == "more_like_this"
+    # dislike: served, prompts NOT scheduled, negative signal
+    db.execute("UPDATE cards SET status='served', served_at=NULL WHERE id=2")
+    db.commit()
+    r2 = select.decide(db, cfg, 2, "dislike")
+    assert r2["next_ready"] == 3
+    assert db.execute("SELECT status FROM cards WHERE id=2").fetchone()["status"] == "served"
+    due2 = db.execute("SELECT due_at FROM prompts WHERE card_id=2").fetchall()
+    assert all(d["due_at"] is None for d in due2)
+    # skip: consume, no SR scheduling
+    nxt = select.decide(db, cfg, 3, "skip")["next_ready"]
+    assert nxt is None  # deck empty
+
+
 def test_search_empty_query_fifo_browse(db, cfg):
     """Mini-app browse with no query: oldest live card first (FIFO, matching
     serving); queries flip to relevance order; status filter applies."""
