@@ -35,6 +35,27 @@ def test_upsert_sources_preserves_counters(db):
     assert row["status"] == "probation"
 
 
+def test_upsert_sources_prunes_vanished_urls(db):
+    old = [{"name": "A", "url": "https://a.example", "feed_url": "https://a.example/feed",
+            "topic": "technology", "status": "trusted"},
+           {"name": "B", "url": "https://b.example", "feed_url": "https://b.example/feed",
+            "topic": "finance", "status": "probation"}]
+    db_mod.upsert_sources(db, old)
+    # B gets history -> must be retired, not deleted; A vanishes with no history -> deleted
+    db_mod.insert_item(db, url="https://b.example/article1", title="t", source_id=2,
+                       content_hash="h1")
+    res = db_mod.upsert_sources(db, [old[0]])
+    assert res["removed"] == 0
+    assert res["retired"] == 1
+    b = db.execute("SELECT * FROM sources WHERE url = 'https://b.example'").fetchone()
+    assert b["status"] == "retired" and b["feed_url"] is None
+    assert db.execute("SELECT COUNT(*) n FROM sources").fetchone()["n"] == 2
+    # now A vanishes too (fresh sync with neither) -> deleted
+    res = db_mod.upsert_sources(db, [])
+    assert res["removed"] == 1
+    assert db.execute("SELECT COUNT(*) n FROM sources").fetchone()["n"] == 1
+
+
 def test_insert_card_unknown_cluster_raises(db):
     with pytest.raises(ValueError):
         db_mod.insert_card(db, item_id=None, cluster_label="nope", title="t", hook="h",

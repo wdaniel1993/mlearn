@@ -194,8 +194,12 @@ def ensure_seed_clusters(conn: sqlite3.Connection, labels: list[str] | None = No
 
 def upsert_sources(conn: sqlite3.Connection, sources: list[dict]) -> dict:
     """Sync sources.yaml into the sources table (keyed by url). Counters
-    (cards_served, grade_sum) are preserved across syncs."""
-    added = updated = 0
+    (cards_served, grade_sum) are preserved across syncs.
+
+    sources.yaml is authoritative: rows whose url vanished from the file are
+    removed if they have no history, otherwise retired (feed_url=NULL,
+    status='retired') so harvest skips them without losing counters."""
+    added = updated = removed = retired = 0
     for s in sources:
         existing = conn.execute("SELECT id FROM sources WHERE url = ?", (s["url"],)).fetchone()
         if existing is None:
@@ -214,8 +218,24 @@ def upsert_sources(conn: sqlite3.Connection, sources: list[dict]) -> dict:
                  s.get("status", "candidate"), s.get("notes"), s["url"]),
             )
             updated += 1
+    yaml_urls = {s["url"] for s in sources}
+    for row in conn.execute("SELECT * FROM sources"):
+        if row["url"] in yaml_urls:
+            continue
+        has_history = conn.execute(
+            "SELECT 1 FROM items WHERE source_id = ? LIMIT 1", (row["id"],)
+        ).fetchone() is not None
+        if has_history:
+            conn.execute(
+                "UPDATE sources SET status = 'retired', feed_url = NULL WHERE id = ?",
+                (row["id"],),
+            )
+            retired += 1
+        else:
+            conn.execute("DELETE FROM sources WHERE id = ?", (row["id"],))
+            removed += 1
     conn.commit()
-    return {"added": added, "updated": updated}
+    return {"added": added, "updated": updated, "removed": removed, "retired": retired}
 
 
 def cluster_by_label(conn: sqlite3.Connection, label: str) -> sqlite3.Row | None:
