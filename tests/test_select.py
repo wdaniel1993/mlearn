@@ -103,9 +103,10 @@ def test_due_prompts_evening_retention(db, cfg):
     assert select.ack_prompt(db, 999)["error"]
 
 
-def test_granular_taste_boosts_similar_cards(db, cfg, monkeypatch):
-    """Positive signal on card A raises A's near-neighbor weight far above a
-    topic sibling: taste works on the EMBEDDING level, not the category."""
+def test_granular_taste_shapes_acquisition_not_sending(db, cfg, monkeypatch):
+    """"\"More content like that\" = embedding-level, applied at ACQUISITION:
+    items near a positively-signalled card get generated first, far items
+    deferred. Sending itself is strict FIFO regardless of taste."""
     import mlearn.taste as taste_mod
     seed_three(db)
     cards = [dict(r) for r in db.execute(
@@ -118,14 +119,20 @@ def test_granular_taste_boosts_similar_cards(db, cfg, monkeypatch):
     db.execute("INSERT INTO signals (card_id, kind, created_at) VALUES (?, 'more_like_this', ?)",
                (cards[0]["id"], select._iso(select.now())))
     db.commit()
-    boosts = taste_mod.boost_scores(db, 1.0, [c["id"] for c in cards])
-    assert boosts[cards[1]["id"]] > boosts[cards[2]["id"]] + 0.5
-    # negative signal on the FAR card drives its boost negative
+    # acquisition: candidate items 101 (near pos) and 102 (far neg-ish)
+    scores = taste_mod.score_vectors(
+        [(101, [0.99, 0.01]), (102, [0.1, 0.9])], db, 1.0)
+    assert scores[101] > scores[102] + 0.5
+    # negative signal drives the far candidate negative
     db.execute("INSERT INTO signals (card_id, kind, created_at) VALUES (?, 'less_like_this', ?)",
                (cards[2]["id"], select._iso(select.now())))
     db.commit()
-    boosts2 = taste_mod.boost_scores(db, 1.0, [c["id"] for c in cards])
-    assert boosts2[cards[1]["id"]] > 0 and boosts2[cards[2]["id"]] < 0
+    scores2 = taste_mod.score_vectors(
+        [(101, [0.99, 0.01]), (102, [0.1, 0.9])], db, 1.0)
+    assert scores2[101] > 0 and scores2[102] < 0
+    # sending: FIFO even with taste signals present
+    pick = select._pick_ready_card(db, "round-robin", None)
+    assert pick is not None and pick["id"] == 1
 
 
 def test_discovery_open_consumes_card(db, cfg):
@@ -146,13 +153,10 @@ def test_discovery_open_consumes_card(db, cfg):
     assert db.execute("SELECT status FROM cards WHERE id = 2").fetchone()["status"] == "ready"
 
 
-def test_taste_zero_without_feedback(db, cfg):
-    import mlearn.taste as taste_mod
+def test_fifo_sending_unconditional(db, cfg):
+    """Serving is strict FIFO: oldest ready card first, taste irrelevant."""
     seed_three(db)
-    boosts = taste_mod.boost_scores(db, 1.0, [1, 2, 3])
-    assert all(b == 0.0 for b in boosts.values())
-    # no feedback -> round-robin behaves as strict FIFO (oldest ready first)
-    pick = select._pick_ready_card(db, "round-robin", None, taste=boosts)
+    pick = select._pick_ready_card(db, "round-robin", None)
     assert pick is not None and pick["id"] == 1
 
 

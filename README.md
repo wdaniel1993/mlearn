@@ -90,7 +90,7 @@ gates, topic guardrails, dedupe.
 - [x] Psychology topic — seed cluster, guardrail, 5 sources (incl. Wikipedia catalog)
 - [x] Two-window day: morning discovery (hook + deep link; tap = implicit signal),
       evening spaced repetition (`due` prompts with deep links)
-- [x] Granular taste — embedding-level boost/penalty on top of the topic bandit
+- [x] Granular taste — embedding-level, applied at ACQUISITION (which items become cards); sending stays strict FIFO
       (like this *concept*, not this *category*)
 
 41 tests. Generation runs on the local OpenAI-compatible endpoint
