@@ -24,10 +24,10 @@ paths:
   config: config.yaml
 
 generate:
-  provider: openrouter
-  model: anthropic/claude-3.5-haiku
-  base_url: https://openrouter.ai/api/v1
-  api_key_env: OPENROUTER_API_KEY
+  provider: local
+  model: deepseek-v4-flash
+  base_url: http://127.0.0.1:8642/v1
+  api_key_env: API_SERVER_KEY
   temperature: 0.4
   max_retries: 3
 

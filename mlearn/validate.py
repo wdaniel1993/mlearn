@@ -78,13 +78,13 @@ def figures_pass(diagram_type: str, diagram_src: str, figures_json: str | None,
     if not figures:
         return False, "diagram_type='data' but no figures"
     fig_vals = {str(f.get("value", "")).replace(",", ".") for f in figures}
-    for num in _numbers_in(diagram_src):
-        if num not in fig_vals:
-            return False, f"diagram number {num!r} missing from figures_json"
+    missing = [num for num in _numbers_in(diagram_src) if num not in fig_vals]
     # percentages: '12%' -> value 12
     for tok in _NUM_RE.findall(diagram_src):
         if tok.endswith("%") and tok[:-1] not in fig_vals:
-            return False, f"diagram percentage {tok!r} missing from figures_json"
+            missing.append(tok[:-1])
+    if missing:
+        return False, f"diagram numbers missing from figures_json: {sorted(set(missing))}"
     for f in figures:
         quote = str(f.get("source", ""))
         if not quote or quote not in source_body:

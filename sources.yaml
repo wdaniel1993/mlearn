@@ -39,16 +39,23 @@ sources:
     status: trusted
     notes: how markets and instruments work
 
-  - name: NIMH News
-    url: https://www.nimh.nih.gov
-    feed_url: https://www.nimh.nih.gov/rss/news
+  - name: PsyBlog
+    url: https://www.spring.org.uk
+    feed_url: https://www.spring.org.uk/feed
     topic: mental_health
     status: trusted
-    notes: mechanism and research only — never prescriptive
+    notes: study-based psychology mechanism summaries
 
-  - name: Cal Newport
-    url: https://www.calnewport.com
-    feed_url: https://www.calnewport.com/feed/
+  - name: NIMH News
+    url: https://www.nimh.nih.gov
+    feed_url: null
+    topic: mental_health
+    status: trusted
+    notes: RSS dead since 2026 site redesign; re-check periodically
+
+  - name: Farnam Street
+    url: https://fs.blog
+    feed_url: https://fs.blog/feed/
     topic: self_improvement
     status: probation
     notes: primary accounts of practice; needs study/data anchor

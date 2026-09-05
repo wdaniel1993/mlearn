@@ -41,11 +41,17 @@ Every command supports `--json`.
 ## Build status
 
 - [x] Phase 1 — store and projection (init, seed, export; Obsidian + Mermaid verified)
-- [ ] Phase 2 — pipeline (harvest, dedupe, generate, validate)
-- [ ] Phase 3 — buffer and serving (tick, next, grade, FSRS)
-- [ ] Phase 4 — recommender (Thompson sampling, EMA, decay, exploration floor)
-- [ ] Phase 5 — novelty and scouting (wildcard, arm birth, probation)
-- [ ] Phase 6 — interfaces (read API, Hermes tool wrappers, Telegram)
+- [x] Phase 2 — pipeline (harvest, dedupe, generate, validate; **read the output in
+  Obsidian for a week before trusting the recommender — the spec's checkpoint**)
+- [x] Phase 3 — buffer and serving (tick, next, grade, FSRS)
+- [x] Phase 4 — recommender (Thompson sampling, EMA, decay, exploration floor)
+- [x] Phase 5 — novelty and scouting (wildcard slot, arm birth, probation)
+- [x] Phase 6 — interfaces (read API `mlearn api`, Hermes tool wrappers, Telegram
+  push cron, Hermes Control "Learn" tab)
+
+Deployed on the Mac Mini: generation via the local OpenAI-compatible endpoint
+(`deepseek-v4-flash` through opencode-go), daily Telegram push at 08:00,
+Obsidian projection into `~/dev/private-notes/Learning/mlearn/cards/`.
 
 ## Layout
 

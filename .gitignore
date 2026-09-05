@@ -18,5 +18,8 @@ tools/node_modules/
 .env
 config.yaml   # machine-specific (paths, provider), see config.yaml.example
 
+# Derived seed JSON contains verbatim article excerpts — regenerated, not committed.
+seeds/phase1_cards.json
+
 # OS
 .DS_Store

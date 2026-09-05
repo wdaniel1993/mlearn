@@ -9,7 +9,11 @@ import yaml
 
 from . import config as config_mod
 from . import db as db_mod
+from . import generate as generate_mod
+from . import harvest as harvest_mod
 from . import project as project_mod
+from . import scout as scout_mod
+from . import select as select_mod
 from . import validate as validate_mod
 
 app = typer.Typer(no_args_is_help=True, add_completion=False)
@@ -120,6 +124,150 @@ def export(since: str | None = typer.Option(None, help="YYYY-MM-DD; only cards c
         _json_out({"written": len(paths), "dir": cfg["paths"]["cards_dir"]})
     else:
         print(f"wrote {len(paths)} files to {cfg['paths']['cards_dir']}")
+
+
+@app.command()
+def harvest(json_out: bool = typer.Option(False, "--json")):
+    """Pull new items from trusted/probation sources (no generation)."""
+    cfg = config_mod.resolve_paths(config_mod.load())
+    conn = db_mod.connect(cfg["paths"]["db"])
+    db_mod.init_db(conn)
+    result = harvest_mod.harvest(conn, cfg)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"new items: {result['new_items']} | skipped {result['skipped']}"
+              f" | failed {result['failed']}")
+        for issue in result["feed_issues"]:
+            print(f"  ! {issue}")
+
+
+@app.command()
+def generate(count: int = typer.Option(12, "--count", min=1,
+                                       help="cards to produce this run"),
+             harvest_items: bool = typer.Option(True, "--harvest/--no-harvest",
+                                                help="fetch new items first"),
+             json_out: bool = typer.Option(False, "--json")):
+    """Discovery pipeline: harvest -> dedupe -> generate -> validate -> enqueue.
+    Phase 2 allocation: round-robin over seed topics (bandit arrives in Phase 4)."""
+    cfg = config_mod.resolve_paths(config_mod.load())
+    conn = db_mod.connect(cfg["paths"]["db"])
+    db_mod.init_db(conn)
+    result = generate_mod.run_generation(conn, cfg, count, do_harvest=harvest_items)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"made {result['made']} cards"
+              f" | dupe-skipped {result['skipped_dupes']} | failed {result['failed']}")
+        if result["card_ids"]:
+            print("card ids: " + ", ".join(map(str, result["card_ids"])))
+
+
+@app.command()
+def next(count: int = typer.Option(1, "--count", min=1),
+         json_out: bool = typer.Option(False, "--json")):
+    """Serve interleaved cards + due prompts (instant; never generates)."""
+    cfg, conn = _load_runtime(json_out)
+    result = select_mod.next_cards(conn, cfg, count)
+    if json_out:
+        _json_out(result)
+    else:
+        if not result["cards"]:
+            print(f"nothing to serve ({result.get('reason', '?')})")
+            return
+        for c in result["cards"]:
+            print(f"[{c['kind']}] #{c['card_id']} {c['title']} ({c['topic']})")
+            print(f"  prompts: " + ", ".join(str(p["prompt_id"]) for p in c["prompts"]))
+
+
+@app.command()
+def grade(prompt_id: int = typer.Argument(...),
+          grade_value: int = typer.Argument(..., help="1=again 2=hard 3=good 4=easy"),
+          json_out: bool = typer.Option(False, "--json")):
+    """The only external write path (C2): FSRS + bandit + EMA update."""
+    cfg, conn = _load_runtime(json_out)
+    result = select_mod.grade_prompt(conn, cfg, prompt_id, grade_value)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"prompt {result['prompt_id']}: grade {result['grade']} -> due {result['due_at']}"
+              f" (stability {result['stability']:.2f}, difficulty {result['difficulty']:.2f})")
+
+
+@app.command()
+def signal(card_id: int = typer.Argument(...),
+           kind: str = typer.Argument(..., help="more_like_this|less_like_this|skip|opened_source"),
+           json_out: bool = typer.Option(False, "--json")):
+    """Explicit taste signal on a card (separate from grades)."""
+    cfg, conn = _load_runtime(json_out)
+    result = select_mod.signal(conn, cfg, card_id, kind)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"signal {result['kind']} on card {result['card_id']}"
+              f" -> {result['cluster']} alpha={result['alpha']:.2f} beta={result['beta']:.2f}")
+
+
+@app.command()
+def search(query: str = typer.Argument(...),
+           limit: int = typer.Option(10, "--limit", min=1, max=25),
+           json_out: bool = typer.Option(False, "--json")):
+    """Semantic search over cards."""
+    cfg, conn = _load_runtime(json_out)
+    result = select_mod.search(conn, cfg, query, limit)
+    if json_out:
+        _json_out(result)
+    else:
+        for r in result:
+            print(f"{r['score']:.3f}  #{r['id']} [{r['topic']}] {r['title']}")
+
+
+@app.command()
+def tick(json_out: bool = typer.Option(False, "--json")):
+    """Cron entry: refill buffer below floor, run weekly decay, report ready depth."""
+    cfg = config_mod.resolve_paths(config_mod.load())
+    conn = db_mod.connect(cfg["paths"]["db"])
+    db_mod.init_db(conn)
+    ready = conn.execute("SELECT COUNT(*) n FROM cards WHERE status = 'ready'").fetchone()["n"]
+    result = {"ready": ready, "target": cfg["buffer_target"], "floor": cfg["buffer_floor"],
+              "refill": False, "generated": 0, "decay": {"decayed": 0}}
+    if ready < cfg["buffer_floor"]:
+        result["refill"] = True
+        gen = generate_mod.run_generation(conn, cfg, cfg["batch_size"])
+        result["generated"] = gen["made"]
+    result["decay"] = select_mod.decay_clusters(conn, cfg)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"ready {result['ready']} (floor {result['floor']}, target {result['target']})"
+              + (f" -> refilled {result['generated']}" if result["refill"] else " -> ok"))
+
+
+@app.command()
+def api(port: int = typer.Option(8311, "--port", min=1, max=65535),
+        host: str = typer.Option("127.0.0.1", "--host")):
+    """Serve the optional read API (localhost by default)."""
+    import uvicorn
+    from .api import create_app
+    uvicorn.run(create_app(), host=host, port=port, log_level="info")
+
+
+@app.command()
+def scout(json_out: bool = typer.Option(False, "--json")):
+    """Candidate discovery + probation promotion pass + feed adoption."""
+    cfg, conn = _load_runtime(json_out)
+    result = scout_mod.run_scout(conn, cfg)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"candidates: {len(result['candidates'])}"
+              f" | adopted to probation: {len(result['adopted'])}")
+        promo = result["promotion"]
+        print(f"promotion: +{len(promo['promoted'])} trusted"
+              f" | {len(promo['blacklisted'])} blacklisted"
+              f" | {len(promo['stayed'])} stayed (baseline {promo['baseline']})")
+        for c in result["candidates"]:
+            print(f"  candidate: {c['name']} ({c['topic']}, {c['citations']} cites)")
 
 
 @app.command()
