@@ -215,7 +215,7 @@ def _pick_ready_card(conn, policy: str, weights: dict[int, float] | None,
     ready = [c for c in ready if c["id"] not in exclude]
     if not ready:
         return None
-    if policy == "round-robin" and not taste:
+    if policy == "round-robin" and (not taste or not any(taste.values())):
         return ready[0]
     w: dict[int, float] = weights or {}
     taste = taste or {}

@@ -133,6 +133,9 @@ def test_taste_zero_without_feedback(db, cfg):
     seed_three(db)
     boosts = taste_mod.boost_scores(db, 1.0, [1, 2, 3])
     assert all(b == 0.0 for b in boosts.values())
+    # no feedback -> round-robin behaves as strict FIFO (oldest ready first)
+    pick = select._pick_ready_card(db, "round-robin", None, taste=boosts)
+    assert pick is not None and pick["id"] == 1
 
 
 def test_thompson_floor_and_shift(db, cfg):
