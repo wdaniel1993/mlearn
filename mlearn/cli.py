@@ -257,6 +257,22 @@ def api(port: int = typer.Option(8311, "--port", min=1, max=65535),
 
 
 @app.command()
+def prospect(count: int = typer.Option(5, "--count", min=1, max=20),
+             json_out: bool = typer.Option(False, "--json")):
+    """Prospect pop-science items for timeless ideas; bridge to Wikipedia pages."""
+    from . import prospect as prospect_mod
+    cfg, conn = _load_runtime(json_out)
+    result = prospect_mod.prospect(conn, cfg, count=count)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"reviewed {result['reviewed']} | bridged {result['bridged']} "
+              f"| seen total {result['seen_total']}")
+        for idea in result.get("ideas", []):
+            print(f"  idea: {idea['idea']}  (from {idea['from']}, item {idea['id']})")
+
+
+@app.command()
 def scout(json_out: bool = typer.Option(False, "--json")):
     """Candidate discovery + probation promotion pass + feed adoption."""
     cfg, conn = _load_runtime(json_out)
