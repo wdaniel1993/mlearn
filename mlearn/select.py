@@ -383,10 +383,28 @@ def search(conn, cfg: dict, query: str, limit: int = 10, offset: int = 0,
            status: str | None = None) -> dict:
     """Semantic search over live cards, paginated (browse-filter friendly).
 
-    Returns {"total", "cards"} where each card carries the browse fields plus
-    a relevance score. Optional status filter (ready|served) — archived cards
-    are never in the pool."""
-    vec = embed_mod.embed_one(query)
+    Semantics: with a query -> relevance order (cosine). With NO query (the
+    browse default) -> strict FIFO: oldest live card first, matching the
+    serving rule ("oldest unseen first"). Optional status filter
+    (ready|served|'' = all live) — archived cards are never in the pool."""
+    q = (query or "").strip()
+    if not q:
+        # FIFO browse — no embeddings touched
+        rows = conn.execute(
+            """SELECT c.id, c.title, c.hook, c.status, c.source_url, c.anchor_quote,
+                      c.diagram_type, c.is_wildcard, c.created_at, c.served_at,
+                      cl.label AS topic
+               FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
+               WHERE c.status != 'archived' AND (? = '' OR c.status = ?)
+               ORDER BY c.id LIMIT ? OFFSET ?""",
+            (status or "", status or "", limit, offset),
+        ).fetchall()
+        total = conn.execute(
+            """SELECT COUNT(*) n FROM cards c
+               WHERE c.status != 'archived' AND (? = '' OR c.status = ?)""",
+            (status or "", status or "")).fetchone()["n"]
+        return {"total": total, "cards": [dict(r) | {"score": None} for r in rows]}
+    vec = embed_mod.embed_one(q)
     if vec is None:
         return {"total": 0, "cards": []}
     pool = embed_mod.card_pool(conn)

@@ -371,6 +371,8 @@ def cards(status: str | None = typer.Option(None, help="ready|served|archived"),
     if status:
         where += " AND c.status = ?"
         params.append(status)
+    else:
+        where += " AND c.status != 'archived'"
     if topic:
         where += " AND cl.label = ?"
         params.append(topic)
@@ -383,7 +385,7 @@ def cards(status: str | None = typer.Option(None, help="ready|served|archived"),
                    c.diagram_type, c.is_wildcard, c.created_at, c.served_at,
                    cl.label AS topic
             FROM cards c JOIN clusters cl ON cl.id = c.cluster_id {where}
-            ORDER BY c.id DESC LIMIT ? OFFSET ?""",
+            ORDER BY c.id ASC LIMIT ? OFFSET ?""",
         params + [limit, offset],
     ).fetchall()
     data = {"total": total, "limit": limit, "offset": offset,
