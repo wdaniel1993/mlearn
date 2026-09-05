@@ -66,3 +66,101 @@ sources:
     topic: self_improvement
     status: trusted
     notes: rationality, evidence, cognition
+
+  # ---- Wikipedia — curated mechanism pages (kind: wikipedia uses the public
+  # MediaWiki API, ~1.2 s/page; sources.yaml is the shared catalog).
+  - name: Wikipedia · Technology
+    url: https://en.wikipedia.org?topic=technology
+    feed_url: null
+    topic: technology
+    status: probation
+    notes: stable, verifiable mechanism articles
+    meta:
+      kind: wikipedia
+      pages:
+        - Solid-state drive
+        - TCP congestion control
+        - Hash function
+        - Radio telescope
+        - Ion thruster
+        - JPEG
+        - Graphics processing unit
+        - Deep learning
+        - Error correction code
+        - Videotelephony
+
+  - name: Wikipedia · Finance
+    url: https://en.wikipedia.org?topic=finance
+    feed_url: null
+    topic: finance
+    status: probation
+    notes: instruments and markets — mechanisms only
+    meta:
+      kind: wikipedia
+      pages:
+        - Yield curve
+        - Compound interest
+        - Bond duration
+        - Index fund
+        - Arbitrage
+        - Fractional-reserve banking
+        - Behavioral economics
+        - Term structure of interest rates
+        - Option (finance)
+        - Market liquidity
+
+  - name: Wikipedia · Mental Health
+    url: https://en.wikipedia.org?topic=mental_health
+    feed_url: null
+    topic: mental_health
+    status: probation
+    notes: mechanism and research only; never prescriptive
+    meta:
+      kind: wikipedia
+      pages:
+        - Sleep deprivation
+        - Circadian rhythm
+        - Neuroplasticity
+        - Hippocampus
+        - Memory consolidation
+        - Serotonin
+        - Prefrontal cortex
+        - Affective neuroscience
+        - Stress (biology)
+        - Attention
+
+  - name: Wikipedia · Self Improvement
+    url: https://en.wikipedia.org?topic=self_improvement
+    feed_url: null
+    topic: self_improvement
+    status: probation
+    notes: evidence-based mechanics of behavior
+    meta:
+      kind: wikipedia
+      pages:
+        - Deliberate practice
+        - Habit
+        - Flow (psychology)
+        - Metacognition
+        - Procrastination
+        - Goal setting
+        - Self-control
+        - Motivation
+
+  - name: Wikipedia · Innovation
+    url: https://en.wikipedia.org?topic=innovation
+    feed_url: null
+    topic: innovation
+    status: probation
+    notes: how innovation actually happens
+    meta:
+      kind: wikipedia
+      pages:
+        - Diffusion of innovations
+        - Disruptive innovation
+        - Design thinking
+        - Open innovation
+        - Technology readiness level
+        - Business model
+        - Invention
+        - Technological innovation

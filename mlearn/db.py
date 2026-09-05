@@ -5,6 +5,7 @@ projection and is never read back as state.
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 import struct
 from datetime import datetime, timezone
@@ -29,7 +30,8 @@ CREATE TABLE IF NOT EXISTS sources (
   promoted_at   TEXT,
   cards_served  INTEGER DEFAULT 0,
   grade_sum     REAL    DEFAULT 0,
-  notes         TEXT
+  notes         TEXT,
+  meta          TEXT            -- JSON: {"kind": "wikipedia", "pages": [...]}
 );
 
 -- Raw fetched items, pre-card.
@@ -145,6 +147,7 @@ SEED_TOPICS = [
     "innovation",
     "technology",
     "finance",
+    "general_knowledge",  # Wikipedia featured-article feed (cross-topic by design)
 ]
 
 
@@ -164,6 +167,10 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    # idempotent column migration for pre-meta databases
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(sources)").fetchall()}
+    if "meta" not in cols:
+        conn.execute("ALTER TABLE sources ADD COLUMN meta TEXT")
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -202,20 +209,21 @@ def upsert_sources(conn: sqlite3.Connection, sources: list[dict]) -> dict:
     added = updated = removed = retired = 0
     for s in sources:
         existing = conn.execute("SELECT id FROM sources WHERE url = ?", (s["url"],)).fetchone()
+        meta = json.dumps(s.get("meta")) if isinstance(s.get("meta"), dict) else None
         if existing is None:
             conn.execute(
-                """INSERT INTO sources (name, url, feed_url, topic, status, added_at, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO sources (name, url, feed_url, topic, status, added_at, notes, meta)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (s["name"], s["url"], s.get("feed_url"), s["topic"],
-                 s.get("status", "candidate"), utcnow(), s.get("notes")),
+                 s.get("status", "candidate"), utcnow(), s.get("notes"), meta),
             )
             added += 1
         else:
             conn.execute(
-                """UPDATE sources SET name=?, feed_url=?, topic=?, status=?, notes=?
+                """UPDATE sources SET name=?, feed_url=?, topic=?, status=?, notes=?, meta=?
                    WHERE url = ?""",
                 (s["name"], s.get("feed_url"), s["topic"],
-                 s.get("status", "candidate"), s.get("notes"), s["url"]),
+                 s.get("status", "candidate"), s.get("notes"), meta, s["url"]),
             )
             updated += 1
     yaml_urls = {s["url"] for s in sources}

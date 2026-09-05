@@ -1,4 +1,5 @@
 """Schema contracts: ids, sources sync, triggers, embedding round-trip."""
+import json
 import sqlite3
 
 import pytest
@@ -23,16 +24,21 @@ def test_seed_clusters_idempotent(db):
 
 def test_upsert_sources_preserves_counters(db):
     srcs = [{"name": "A", "url": "https://a.example", "feed_url": "https://a.example/feed",
-             "topic": "technology", "status": "trusted"}]
+             "topic": "technology", "status": "trusted",
+             "meta": {"kind": "wikipedia", "pages": ["Yield curve"]}}]
     db_mod.upsert_sources(db, srcs)
+    row = db.execute("SELECT * FROM sources WHERE url = 'https://a.example'").fetchone()
+    assert json.loads(row["meta"]) == {"kind": "wikipedia", "pages": ["Yield curve"]}
     db.execute("UPDATE sources SET cards_served = 7, grade_sum = 21 WHERE url = 'https://a.example'")
     db_mod.upsert_sources(db, [{"name": "A2", "url": "https://a.example", "feed_url": None,
-                                "topic": "technology", "status": "probation"}])
+                                "topic": "technology", "status": "probation",
+                                "meta": {"kind": "wikipedia", "pages": ["Habit"]}}])
     row = db.execute("SELECT * FROM sources WHERE url = 'https://a.example'").fetchone()
     assert row["name"] == "A2"
     assert row["cards_served"] == 7
     assert row["grade_sum"] == 21
     assert row["status"] == "probation"
+    assert json.loads(row["meta"]) == {"kind": "wikipedia", "pages": ["Habit"]}
 
 
 def test_upsert_sources_prunes_vanished_urls(db):
