@@ -147,7 +147,6 @@ SEED_TOPICS = [
     "innovation",
     "technology",
     "finance",
-    "general_knowledge",  # Wikipedia featured-article feed (cross-topic by design)
 ]
 
 
