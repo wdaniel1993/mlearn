@@ -79,14 +79,60 @@ def test_daily_cap(db, cfg):
     assert "cap" in res["reason"]
 
 
-def test_overdue_retention_served_first(db, cfg):
+def test_due_prompts_evening_retention(db, cfg):
+    """Evening SR: served cards' due prompts surface, oldest first; `next`
+    (morning) stays pure discovery and never returns retention."""
     seed_three(db)
-    select.next_cards(db, cfg, 3)  # serve all three
-    old = (select.now() - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-    db.execute("UPDATE prompts SET due_at = ? WHERE id = 1", (old,))
+    select.next_cards(db, cfg, 3)  # serve all three, prompts due now +1d
+    db.execute("UPDATE prompts SET due_at = ? WHERE id = 1",
+               (select._iso(select.now() - timedelta(days=3)),))
+    db.execute("UPDATE prompts SET due_at = ? WHERE id = 2",
+               (select._iso(select.now() - timedelta(days=1)),))
     db.commit()
-    res = select.next_cards(db, cfg, 1)
-    assert res["cards"][0]["kind"] == "retention"
+    due = select.due_prompts(db, 5)
+    assert [p["prompt_id"] for p in due] == [1, 2]  # oldest first
+    assert due[0]["card_id"] == 1 and due[0]["title"]
+    # morning push: even with due prompts, only discovery cards
+    res = select.next_cards(db, cfg, 3)
+    assert all(c["kind"] == "discovery" for c in res["cards"])
+    # ack: reviewed + due pushed one day out
+    a = select.ack_prompt(db, 1)
+    assert a["acked"]
+    due2 = select.due_prompts(db, 5)
+    assert 1 not in [p["prompt_id"] for p in due2]
+    assert select.ack_prompt(db, 999)["error"]
+
+
+def test_granular_taste_boosts_similar_cards(db, cfg, monkeypatch):
+    """Positive signal on card A raises A's near-neighbor weight far above a
+    topic sibling: taste works on the EMBEDDING level, not the category."""
+    import mlearn.taste as taste_mod
+    seed_three(db)
+    cards = [dict(r) for r in db.execute(
+        "SELECT id, cluster_id FROM cards ORDER BY id").fetchall()]
+    # card1+card2 similar embeddings, card3 far away (same cluster as card2)
+    vecs = {cards[0]["id"]: [1.0, 0.0], cards[1]["id"]: [0.98, 0.02],
+            cards[2]["id"]: [0.0, 1.0]}
+    monkeypatch.setattr(taste_mod.embed_mod, "card_pool",
+                        lambda conn: [(cid, v) for cid, v in vecs.items()])
+    db.execute("INSERT INTO signals (card_id, kind, created_at) VALUES (?, 'more_like_this', ?)",
+               (cards[0]["id"], select._iso(select.now())))
+    db.commit()
+    boosts = taste_mod.boost_scores(db, 1.0, [c["id"] for c in cards])
+    assert boosts[cards[1]["id"]] > boosts[cards[2]["id"]] + 0.5
+    # negative signal on the FAR card drives its boost negative
+    db.execute("INSERT INTO signals (card_id, kind, created_at) VALUES (?, 'less_like_this', ?)",
+               (cards[2]["id"], select._iso(select.now())))
+    db.commit()
+    boosts2 = taste_mod.boost_scores(db, 1.0, [c["id"] for c in cards])
+    assert boosts2[cards[1]["id"]] > 0 and boosts2[cards[2]["id"]] < 0
+
+
+def test_taste_zero_without_feedback(db, cfg):
+    import mlearn.taste as taste_mod
+    seed_three(db)
+    boosts = taste_mod.boost_scores(db, 1.0, [1, 2, 3])
+    assert all(b == 0.0 for b in boosts.values())
 
 
 def test_thompson_floor_and_shift(db, cfg):

@@ -35,9 +35,11 @@ mlearn harvest          # pull new items from the allowlist (feeds + Wikipedia)
 mlearn prospect --count 5   # pop-science -> timeless ideas -> Wikipedia bridge
 mlearn tick             # cron entry: refill the buffer if below floor
 mlearn generate --count 12   # LLM card batch (locked against concurrent runs)
-mlearn next --count 3   # interleaved discovery + retention, instantly
+mlearn next --count 3   # MORNING push: pure discovery (ready cards only)
+mlearn due --count 5    # EVENING push: due recall prompts (spaced repetition)
+mlearn ack <prompt_id>  # acknowledge an evening reminder (due +1 day)
 mlearn grade <prompt_id> <1-4>   # the only external write path
-mlearn signal <card_id> <kind>   # more_like_this|less_like_this|skip
+mlearn signal <card_id> <kind>   # more_like_this|less_like_this|skip|discovery_open
 mlearn search "query"   # semantic search over cards
 mlearn cards            # browse/paginate cards
 mlearn card <id>        # one card + its recall prompts
@@ -86,19 +88,30 @@ gates, topic guardrails, dedupe.
 - [x] Content standard 2026-09 — 200-500 word pyramid cards for busy ESL professionals
 - [x] Concept discovery — Wikipedia list crawl + pop-science prospecting
 - [x] Psychology topic — seed cluster, guardrail, 5 sources (incl. Wikipedia catalog)
+- [x] Two-window day: morning discovery (hook + deep link; tap = implicit signal),
+      evening spaced repetition (`due` prompts with deep links)
+- [x] Granular taste — embedding-level boost/penalty on top of the topic bandit
+      (like this *concept*, not this *category*)
 
-39 tests. Generation runs on the local OpenAI-compatible endpoint
+41 tests. Generation runs on the local OpenAI-compatible endpoint
 (`deepseek-v4-flash` through opencode-go); a flock guard prevents concurrent
 generation runs (tick vs manual batch).
 
 ## Deployed on the Mac Mini
 
-- Daily Telegram push at 08:00 (concept prospecting first, then the cap of 5)
+- **Morning push** 08:00 — `mlearn_push.py`: concept prospecting, then up to 5
+  discovery hooks, each with a `t.me/<bot>?startapp=learn/<id>/disc` deep link;
+  tapping the link opens the card in the app and counts as implicit positive
+  feedback (`discovery_open`)
+- **Evening push** 19:00 — `mlearn_retention.py`: up to 5 due recall prompts,
+  each with a `learn/<id>/ret` deep link back to the card; sends are acked
+  (due +1 day), FSRS rescheduling happens via in-app grades
 - Hourly tick (buffer refill) — generation lock protected
 - Obsidian projection into `~/dev/private-notes/Learning/mlearn/cards/`
   (pruned: only live cards are projected)
 - Hermes Control "Learn" tab: stats, search, endless browse, card subpages
-  with rendered markdown + mermaid + labeled recall grading
+  with rendered markdown + mermaid (tap-to-enlarge lightbox) + labeled recall
+  grading + 👍/👎/skip signals
 - Read API: `mlearn api` on 127.0.0.1:8311
 
 ## Layout

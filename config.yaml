@@ -5,9 +5,11 @@ buffer_target: 20
 buffer_floor: 8
 batch_size: 12
 daily_cap: 5
-discovery_ratio: 0.7
+discovery_ratio: 0.7    # legacy; mornings are pure discovery now
 wildcard_rate: 0.15
 exploration_floor: 0.03
+taste_strength: 1.0     # granular (embedding-level) feedback weight; 0 disables
+daily_retention_cap: 5  # evening spaced-repetition prompts per day
 dedupe_threshold: 0.92
 profile_lambda: 0.1
 decay_factor: 0.95

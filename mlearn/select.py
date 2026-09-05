@@ -21,6 +21,7 @@ SIGNAL_EFFECTS = {
     "less_like_this": ("beta", 1.5),
     "skip": ("beta", 0.3),
     "opened_source": ("alpha", 0.5),
+    "discovery_open": ("alpha", 1.2),  # implicit: morning deep-link tap
 }
 
 _scheduler = Scheduler()
@@ -200,8 +201,13 @@ def thompson_allocation(conn, exploration_floor: float) -> dict[int, float]:
 
 
 def _pick_ready_card(conn, policy: str, weights: dict[int, float] | None,
+                     taste: dict[int, float] | None = None,
                      exclude: set[int] | None = None):
-    """One ready card per allocation policy, excluding already-picked ids."""
+    """One ready card per allocation policy x granular taste, excluding ids.
+
+    Weight = cluster weight (topic-level bandit or 1) * taste weight
+    (embedding-level: 1 + boost, floored). Weighted random keeps exploration.
+    With round-robin and no taste this returns the first card (old behavior)."""
     exclude = exclude or set()
     ready = conn.execute(
         "SELECT c.* FROM cards c WHERE c.status = 'ready' ORDER BY c.id"
@@ -209,19 +215,21 @@ def _pick_ready_card(conn, policy: str, weights: dict[int, float] | None,
     ready = [c for c in ready if c["id"] not in exclude]
     if not ready:
         return None
-    if policy == "round-robin":
+    if policy == "round-robin" and not taste:
         return ready[0]
     w: dict[int, float] = weights or {}
-    bucket: dict[int, list] = {}
+    taste = taste or {}
+    cands: list[tuple[dict, float]] = []
     for c in ready:
-        bucket.setdefault(c["cluster_id"], []).append(c)
-    remaining = list(w)
-    while remaining:
-        cid = random.choices(remaining, weights=[w[k] for k in remaining], k=1)[0]
-        if bucket.get(cid):
-            return bucket[cid][0]
-        remaining.remove(cid)
-    return ready[0]
+        sw = w.get(c["cluster_id"], 1.0) * max(0.05, 1.0 + taste.get(c["id"], 0.0))
+        cands.append((c, sw))
+    total = sum(sw for _, sw in cands)
+    r = random.uniform(0, total)
+    for c, sw in cands:
+        r -= sw
+        if r <= 0:
+            return c
+    return cands[-1][0]
 
 
 # ── serving (spec 6.5) ──────────────────────────────────────────────────────
@@ -244,8 +252,11 @@ def _payload(conn, card_row, kind: str, prompts) -> dict:
 
 
 def next_cards(conn, cfg: dict, count: int) -> dict:
-    """Interleaved list: overdue retention first, else discovery ratio from
-    ready cards, remainder from due prompts. Enforces daily_cap."""
+    """Discovery serving for the MORNING push: ready cards only, weighted by
+    cluster bandit (topic level) x granular taste (embedding level).
+
+    Retention has its own evening command (due_prompts) — mornings are pure
+    discovery by design."""
     count = max(1, int(count))
     today = now().strftime("%Y-%m-%d")
     served_today = conn.execute(
@@ -257,42 +268,28 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
     allowed = min(count, cfg["daily_cap"] - served_today)
     out: list[dict] = []
 
-    cutoff = _iso(now() - timedelta(days=1))
-    overdue = conn.execute(
-        """SELECT pr.*, c.* FROM prompts pr JOIN cards c ON c.id = pr.card_id
-           WHERE pr.due_at < ? AND c.status = 'served'
-           ORDER BY pr.due_at LIMIT ?""",
-        (cutoff, allowed),
-    ).fetchall()
-    if overdue:
-        for row in overdue:
-            prompts = [row]
-            out.append(_payload(conn, row, "retention", prompts))
-        for i, row in enumerate(overdue[:1]):
-            conn.execute("UPDATE prompts SET last_review = ? WHERE id = ?",
-                         (_iso(now()), row["id"]))
-        conn.commit()
-        return {"cards": out, "reason": "overdue retention", "served_today": served_today}
-
-    # Discovery: ready cards under the discovery ratio, then due prompts.
-    allowed = min(count, cfg["daily_cap"] - served_today)
-    disc_slots = max(1, round(allowed * cfg["discovery_ratio"]))
     policy = cfg.get("allocation_policy", "round-robin")
     weights = thompson_allocation(conn, cfg["exploration_floor"]) if policy == "thompson" else None
+    from . import taste as taste_mod
+    strength = cfg.get("taste_strength", 0.0)
+    ready_ids = [r["id"] for r in conn.execute(
+        "SELECT id FROM cards WHERE status = 'ready' ORDER BY id").fetchall()]
+    taste = taste_mod.boost_scores(conn, strength, ready_ids)
+
     served_cards: list[int] = []
     prompts_to_create: list[tuple[int, str | None]] = []
     wc_picked = False
-    for _ in range(disc_slots):
+    for _ in range(allowed):
         card_row = None
         if (not wc_picked and random.random() < cfg["wildcard_rate"]
-                and conn.execute("SELECT COUNT(*) n FROM cards WHERE status = 'ready'"
-                                 ).fetchone()["n"] >= cfg.get("wildcard_min_ready", 6)):
+                and len(ready_ids) >= cfg.get("wildcard_min_ready", 6)):
             from . import novelty as novelty_mod
             card_row = novelty_mod.pick_wildcard(conn, cfg)
             if card_row is not None:
                 wc_picked = True
         if card_row is None:
-            card_row = _pick_ready_card(conn, policy, weights)
+            card_row = _pick_ready_card(conn, policy, weights, taste=taste,
+                                        exclude=set(served_cards))
         if card_row is None:
             break
         cluster_label = conn.execute("SELECT label FROM clusters WHERE id = ?",
@@ -310,39 +307,6 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
         if len(out) >= allowed:
             break
 
-    # Fill remainder from due prompts (due <= now). If none are due, extra
-    # discovery slots take the unused allowance so a request never returns
-    # fewer cards than the remaining daily budget allows.
-    remaining = allowed - len(out)
-    if remaining > 0:
-        due_prompts = conn.execute(
-            """SELECT pr.*, c.* FROM prompts pr JOIN cards c ON c.id = pr.card_id
-               WHERE pr.due_at IS NOT NULL AND pr.due_at <= ? AND c.status = 'served'
-               ORDER BY pr.due_at LIMIT ?""",
-            (_iso(now()), remaining),
-        ).fetchall()
-        for row in due_prompts:
-            out.append(_payload(conn, row, "retention", [row]))
-            remaining -= 1
-    if remaining > 0:
-        picked = {c["card_id"] for c in out}
-        for _ in range(remaining):
-            card_row = _pick_ready_card(conn, policy, weights, exclude=picked)
-            if card_row is None:
-                break
-            picked.add(card_row["id"])
-            cluster_label = conn.execute("SELECT label FROM clusters WHERE id = ?",
-                                         (card_row["cluster_id"],)).fetchone()["label"]
-            card_dict = dict(card_row)
-            card_dict["cluster_label"] = cluster_label
-            prompts = conn.execute(
-                "SELECT * FROM prompts WHERE card_id = ? ORDER BY id", (card_row["id"],)
-            ).fetchall()
-            out.append(_payload(conn, card_dict, "discovery", prompts))
-            served_cards.append(card_row["id"])
-            for p in prompts:
-                if p["due_at"] is None:
-                    prompts_to_create.append((p["id"], _iso(now() + timedelta(days=1))))
     for cid in served_cards:
         conn.execute("UPDATE cards SET status = 'served', served_at = ? WHERE id = ?",
                      (_iso(now()), cid))
@@ -358,7 +322,35 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
     for pid, due in prompts_to_create:
         conn.execute("UPDATE prompts SET due_at = ? WHERE id = ? AND due_at IS NULL", (due, pid))
     conn.commit()
-    return {"cards": out, "reason": "discovery + due", "served_today": served_today}
+    return {"cards": out, "reason": "discovery", "served_today": served_today}
+
+
+# ── evening retention (spaced repetition) ───────────────────────────────────
+
+def due_prompts(conn, count: int = 5) -> list[dict]:
+    """Due recall prompts (< = now) on already-served cards, oldest first."""
+    rows = conn.execute(
+        """SELECT pr.id AS prompt_id, pr.question, pr.due_at, pr.last_review,
+                  c.id AS card_id, c.title, cl.label AS topic
+           FROM prompts pr JOIN cards c ON c.id = pr.card_id
+           JOIN clusters cl ON cl.id = c.cluster_id
+           WHERE pr.due_at IS NOT NULL AND pr.due_at <= ? AND c.status = 'served'
+           ORDER BY pr.due_at LIMIT ?""",
+        (_iso(now()), count),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def ack_prompt(conn, prompt_id: int) -> dict:
+    """Evening reminder acknowledged: mark reviewed and push due 1 day out
+    (FSRS rescheduling happens via the explicit in-app grade)."""
+    row = conn.execute("SELECT id FROM prompts WHERE id = ?", (prompt_id,)).fetchone()
+    if row is None:
+        return {"error": "prompt not found"}
+    conn.execute("UPDATE prompts SET last_review = ?, due_at = ? WHERE id = ?",
+                 (_iso(now()), _iso(now() + timedelta(days=1)), prompt_id))
+    conn.commit()
+    return {"prompt_id": prompt_id, "acked": True}
 
 
 # ── weekly taste decay (spec 6.3) ───────────────────────────────────────────

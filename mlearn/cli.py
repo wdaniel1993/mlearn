@@ -200,7 +200,7 @@ def grade(prompt_id: int = typer.Argument(...),
 
 @app.command()
 def signal(card_id: int = typer.Argument(...),
-           kind: str = typer.Argument(..., help="more_like_this|less_like_this|skip|opened_source"),
+           kind: str = typer.Argument(..., help="more_like_this|less_like_this|skip|opened_source|discovery_open"),
            json_out: bool = typer.Option(False, "--json")):
     """Explicit taste signal on a card (separate from grades)."""
     cfg, conn = _load_runtime(json_out)
@@ -210,6 +210,33 @@ def signal(card_id: int = typer.Argument(...),
     else:
         print(f"signal {result['kind']} on card {result['card_id']}"
               f" -> {result['cluster']} alpha={result['alpha']:.2f} beta={result['beta']:.2f}")
+
+
+@app.command()
+def due(count: int = typer.Option(5, "--count", min=1, max=20),
+        json_out: bool = typer.Option(False, "--json")):
+    """Due recall prompts for the EVENING spaced-repetition push."""
+    cfg, conn = _load_runtime(json_out)
+    prompts = select_mod.due_prompts(conn, count)
+    if json_out:
+        _json_out({"prompts": prompts, "total": len(prompts)})
+    else:
+        if not prompts:
+            print("no prompts due")
+        for p in prompts:
+            print(f"#{p['prompt_id']} [{p['topic']}] {p['title'][:40]} :: {p['question'][:70]}")
+
+
+@app.command()
+def ack(prompt_id: int = typer.Argument(...),
+        json_out: bool = typer.Option(False, "--json")):
+    """Acknowledge an evening reminder (reviewed; due pushed +1 day)."""
+    cfg, conn = _load_runtime(json_out)
+    result = select_mod.ack_prompt(conn, prompt_id)
+    if json_out:
+        _json_out(result)
+    else:
+        print(f"ack {result}" if result.get("acked") else f"error: {result}")
 
 
 @app.command()

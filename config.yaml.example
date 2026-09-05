@@ -7,9 +7,11 @@ buffer_floor: 8          # drop below -> trigger a generation run
 batch_size: 12           # cards produced per run
 
 # --- Serving ---
-daily_cap: 5             # max cards served per day (notification fatigue guard)
-discovery_ratio: 0.7     # discovery vs retention interleave (default 70/30)
+daily_cap: 5             # max discovery cards served per day (morning push)
+discovery_ratio: 0.7     # legacy; mornings are pure discovery now
 retention_target: 0.9    # FSRS retention target
+daily_retention_cap: 5   # evening spaced-repetition prompts per day
+taste_strength: 1.0      # granular (embedding-level) feedback weight; 0 disables
 
 # --- Novelty / exploration ---
 wildcard_rate: 0.15      # share of generation slots for wildcard topics
