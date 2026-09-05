@@ -69,6 +69,14 @@ Hard rules:
 - PYRAMID PRINCIPLE: open body_md with the single key takeaway as the first sentence —
   the conclusion up front. Then support it with a few logical steps or mechanisms in
   order, evidence or concrete numbers last.
+- SIMPLE IDEAS: the takeaway must be a simple, transferable idea — one plain sentence
+  anyone could repeat. Favor timeless concepts, models, frameworks, and heuristics over
+  newsy specifics. Strip the article down to the idea that keeps its value in a year.
+- FRAMEWORKS AND MODELS (layers, stages, types, steps): enumerate the full structure
+  explicitly — all 7 OSI layers, every stage, every component — one line per item, in
+  order. The mermaid diagram (flowchart/stateDiagram-v2/mindmap) must show the ENTIRE
+  structure, not a fragment. Recall prompts must probe the structure itself (e.g. "name
+  the layers in order").
 - EASY LANGUAGE: sentences of at most 20 words, everyday words, active voice. Define any
   jargon inline the first time. Use concrete examples and numbers from the article.
   One idea per paragraph; 2-4 item bullet lists are fine; bold the 2-3 key terms.

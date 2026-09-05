@@ -74,40 +74,44 @@ sources:
     feed_url: null
     topic: technology
     status: probation
-    notes: stable, verifiable mechanism articles
+    notes: stable concept and mechanism articles — models, layers, theorems
     meta:
       kind: wikipedia
       pages:
+        - OSI model
+        - CAP theorem
+        - Finite-state machine
+        - Big O notation
+        - Moore's law
+        - Client–server model
         - Solid-state drive
-        - TCP congestion control
         - Hash function
-        - Radio telescope
+        - Error correction code
         - Ion thruster
         - JPEG
-        - Graphics processing unit
-        - Deep learning
-        - Error correction code
-        - Videotelephony
+        - Radio telescope
 
   - name: Wikipedia · Finance
     url: https://en.wikipedia.org?topic=finance
     feed_url: null
     topic: finance
     status: probation
-    notes: instruments and markets — mechanisms only
+    notes: instruments, markets, and heuristics — mechanisms only
     meta:
       kind: wikipedia
       pages:
         - Yield curve
         - Compound interest
+        - Time value of money
+        - Rule of 72
         - Bond duration
         - Index fund
         - Arbitrage
         - Fractional-reserve banking
         - Behavioral economics
-        - Term structure of interest rates
-        - Option (finance)
         - Market liquidity
+        - Dollar-cost averaging
+        - Option (finance)
 
   - name: Wikipedia · Mental Health
     url: https://en.wikipedia.org?topic=mental_health
@@ -125,16 +129,18 @@ sources:
         - Memory consolidation
         - Serotonin
         - Prefrontal cortex
-        - Affective neuroscience
-        - Stress (biology)
-        - Attention
+        - Classical conditioning
+        - Operant conditioning
+        - Learned helplessness
+        - Cognitive dissonance
+        - Habituation
 
   - name: Wikipedia · Self Improvement
     url: https://en.wikipedia.org?topic=self_improvement
     feed_url: null
     topic: self_improvement
     status: probation
-    notes: evidence-based mechanics of behavior
+    notes: evidence-based mechanics of behavior — heuristics welcome
     meta:
       kind: wikipedia
       pages:
@@ -146,13 +152,17 @@ sources:
         - Goal setting
         - Self-control
         - Motivation
+        - Implementation intentions
+        - Parkinson's law
+        - Zeigarnik effect
+        - Dunning–Kruger effect
 
   - name: Wikipedia · Innovation
     url: https://en.wikipedia.org?topic=innovation
     feed_url: null
     topic: innovation
     status: probation
-    notes: how innovation actually happens
+    notes: how innovation actually happens — models and effects
     meta:
       kind: wikipedia
       pages:
@@ -162,5 +172,7 @@ sources:
         - Open innovation
         - Technology readiness level
         - Business model
-        - Invention
-        - Technological innovation
+        - Network effect
+        - Long tail
+        - Minimum viable product
+        - Technology acceptance model
