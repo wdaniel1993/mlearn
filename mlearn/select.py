@@ -220,13 +220,11 @@ def thompson_allocation(conn, exploration_floor: float) -> dict[int, float]:
 
 
 def _pick_ready_card(conn, policy: str, weights: dict[int, float] | None,
-                     taste: dict[int, float] | None = None,
                      exclude: set[int] | None = None):
-    """One ready card per allocation policy x granular taste, excluding ids.
-
-    Weight = cluster weight (topic-level bandit or 1) * taste weight
-    (embedding-level: 1 + boost, floored). Weighted random keeps exploration.
-    With round-robin and no taste this returns the first card (old behavior)."""
+    """One ready card. Serving is strict FIFO (oldest ready first) — taste
+    only influences ACQUISITION (which items become cards), never the send
+    order. round-robin returns ready[0]; thompson weights remain available
+    for topic-level exploration but are not deployed."""
     exclude = exclude or set()
     ready = conn.execute(
         "SELECT c.* FROM cards c WHERE c.status = 'ready' ORDER BY c.id"
@@ -234,16 +232,16 @@ def _pick_ready_card(conn, policy: str, weights: dict[int, float] | None,
     ready = [c for c in ready if c["id"] not in exclude]
     if not ready:
         return None
-    if policy == "round-robin" and (not taste or not any(taste.values())):
+    if policy == "round-robin":
         return ready[0]
     w: dict[int, float] = weights or {}
-    taste = taste or {}
     cands: list[tuple[dict, float]] = []
+    tot = 0.0
     for c in ready:
-        sw = w.get(c["cluster_id"], 1.0) * max(0.05, 1.0 + taste.get(c["id"], 0.0))
+        sw = w.get(c["cluster_id"], 1.0)
         cands.append((c, sw))
-    total = sum(sw for _, sw in cands)
-    r = random.uniform(0, total)
+        tot += sw
+    r = random.uniform(0, tot)
     for c, sw in cands:
         r -= sw
         if r <= 0:
@@ -271,8 +269,9 @@ def _payload(conn, card_row, kind: str, prompts) -> dict:
 
 
 def next_cards(conn, cfg: dict, count: int) -> dict:
-    """Discovery serving for the MORNING push: ready cards only, weighted by
-    cluster bandit (topic level) x granular taste (embedding level).
+    """Discovery serving for the MORNING push: ready cards only, strict FIFO
+    (oldest ready first). Taste never touches the send order — it only
+    prioritizes ACQUISITION inside generate (taste_strength).
 
     Retention has its own evening command (due_prompts) — mornings are pure
     discovery by design."""
@@ -289,25 +288,22 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
 
     policy = cfg.get("allocation_policy", "round-robin")
     weights = thompson_allocation(conn, cfg["exploration_floor"]) if policy == "thompson" else None
-    from . import taste as taste_mod
-    strength = cfg.get("taste_strength", 0.0)
-    ready_ids = [r["id"] for r in conn.execute(
-        "SELECT id FROM cards WHERE status = 'ready' ORDER BY id").fetchall()]
-    taste = taste_mod.boost_scores(conn, strength, ready_ids)
 
     served_cards: list[int] = []
     prompts_to_create: list[tuple[int, str | None]] = []
     wc_picked = False
+    ready_count = conn.execute(
+        "SELECT COUNT(*) n FROM cards WHERE status = 'ready'").fetchone()["n"]
     for _ in range(allowed):
         card_row = None
         if (not wc_picked and random.random() < cfg["wildcard_rate"]
-                and len(ready_ids) >= cfg.get("wildcard_min_ready", 6)):
+                and ready_count >= cfg.get("wildcard_min_ready", 6)):
             from . import novelty as novelty_mod
             card_row = novelty_mod.pick_wildcard(conn, cfg)
             if card_row is not None:
                 wc_picked = True
         if card_row is None:
-            card_row = _pick_ready_card(conn, policy, weights, taste=taste,
+            card_row = _pick_ready_card(conn, policy, weights,
                                         exclude=set(served_cards))
         if card_row is None:
             break

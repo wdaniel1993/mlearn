@@ -302,22 +302,55 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
         for topic in topics:
             if made >= count:
                 break
-            item = conn.execute(
-                """SELECT i.* FROM items i
-                   JOIN sources s ON s.id = i.source_id
-                   WHERE i.processed = 0 AND s.topic = ?
-                   ORDER BY i.id LIMIT 1""",
-                (topic,),
-            ).fetchone()
+            item = None
+            text = ""
+            vec: list[float] | None = None
+            strength = cfg.get("taste_strength", 0.0)
+            if strength > 0:
+                # acquisition: embedding-level taste decides WHICH unprocessed
+                # item becomes a card; send order stays FIFO (next_cards)
+                cands = conn.execute(
+                    """SELECT i.* FROM items i
+                       JOIN sources s ON s.id = i.source_id
+                       WHERE i.processed = 0 AND s.topic = ?
+                       ORDER BY i.id""",
+                    (topic,),
+                ).fetchall()
+                scored: list[tuple[dict, list[float] | None, str]] = []
+                for it in cands:
+                    txt = item_text(it["raw_path"], it["title"])
+                    if len(txt) < 120:
+                        conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (it["id"],))
+                        conn.commit()
+                        skipped += 1
+                        continue
+                    vec = embed_mod.embed_one(it["title"] + ". " + txt[:1400])
+                    scored.append((it, vec, txt))
+                if scored:
+                    from . import taste as taste_mod
+                    boosts = taste_mod.score_vectors(
+                        [(it["id"], vec) for it, vec, _ in scored], conn, strength)
+                    scored.sort(key=lambda kv: (-boosts.get(kv[0]["id"], 0.0), kv[0]["id"]))
+                    item, vec, text = scored[0]
+            else:
+                item = conn.execute(
+                    """SELECT i.* FROM items i
+                       JOIN sources s ON s.id = i.source_id
+                       WHERE i.processed = 0 AND s.topic = ?
+                       ORDER BY i.id LIMIT 1""",
+                    (topic,),
+                ).fetchone()
+                if item is None:
+                    continue
+                text = item_text(item["raw_path"], item["title"])
+                if len(text) < 120:
+                    conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (item["id"],))
+                    conn.commit()
+                    skipped += 1
+                    continue
+                vec = embed_mod.embed_one(item["title"] + ". " + text[:1400])
             if item is None:
                 continue
-            text = item_text(item["raw_path"], item["title"])
-            if len(text) < 120:
-                conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (item["id"],))
-                conn.commit()
-                skipped += 1
-                continue
-            vec = embed_mod.embed_one(item["title"] + ". " + text[:1400])
             dup = embed_mod.similar_to_pool(vec, pool, threshold) if vec else None
             if dup is not None:
                 conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (item["id"],))

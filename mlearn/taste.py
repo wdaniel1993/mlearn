@@ -92,3 +92,28 @@ def boost_scores(conn: sqlite3.Connection, strength: float,
 def taste_weight(boost: float) -> float:
     """Multiplicative weight: 1 + boost, floored so nothing dies entirely."""
     return max(0.05, 1.0 + boost)
+
+
+def score_vectors(candidates: list[tuple[int, list[float] | None]],
+                  conn: sqlite3.Connection, strength: float) -> dict[int, float]:
+    """ACQUISITION taste: boost per candidate (item id, embedding).
+
+    Same embedding math as boost_scores, but for the generation queue: items
+    whose content resembles positively-signalled concepts are generated first
+    ("more content like that"), disliked concepts are deferred. Pure function
+    over already-computed vectors — callers embed the candidates themselves."""
+    pos, neg = feedback_maps(conn)
+    if not pos and not neg:
+        return {i: 0.0 for i, _ in candidates}
+    pool = {cid: v for cid, v in embed_mod.card_pool(conn)}
+    pos_vecs = [pool[c] for c in pos if c in pool]
+    neg_vecs = [pool[c] for c in neg if c in pool]
+    out: dict[int, float] = {}
+    for item_id, vec in candidates:
+        if not vec:
+            out[item_id] = 0.0
+            continue
+        plus = sum(embed_mod.cosine(vec, p) for p in pos_vecs) / len(pos_vecs) if pos_vecs else 0.0
+        minus = sum(embed_mod.cosine(vec, n) for n in neg_vecs) / len(neg_vecs) if neg_vecs else 0.0
+        out[item_id] = max(-1.0, min(1.0, plus - minus)) * strength
+    return out
