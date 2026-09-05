@@ -97,6 +97,12 @@ Hard rules:
 - The diagram must carry the core idea on its own: a reader who sees only the diagram gets
   the point. Prefer flowchart, sequenceDiagram, stateDiagram-v2, mindmap for concepts,
   xychart-beta or pie ONLY when the article itself provides the numbers.
+- DIAGRAM QUALITY: the diagram must be SIMPLE and VERY UNDERSTANDABLE. At most 10 lines
+  of mermaid source, at most 8 nodes. Short labels (at most 4 words). One clear visual
+  idea per diagram: step order, layer stack, state loop, or tree. For frameworks show the
+  ENTIRE structure (all 7 OSI layers / every stage), for mechanisms show the minimal loop.
+  Never decorate: no subgraphs, no fancy syntax, no long sentences inside nodes. If you
+  cannot express the idea in 10 lines, simplify the idea first.
 - prompts: 2-4 recall questions, each answerable from body_md alone, each ending with '?'.
 
 {TGUARD}
@@ -142,6 +148,12 @@ def call_llm(cfg: dict, system: str, user: str) -> str | None:
             {"role": "user", "content": user},
         ],
     }
+    effort = gen.get("reasoning_effort")
+    if effort:
+        # DeepSeek-family reasoning: send both accepted spellings (the local
+        # OpenAI-compatible gateway tolerates both; one is honored).
+        payload["reasoning_effort"] = effort
+        payload["reasoning"] = {"effort": effort}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
     with httpx.Client(timeout=360) as client:
         r = client.post(url, headers=headers, json=payload)

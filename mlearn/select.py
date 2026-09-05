@@ -383,20 +383,39 @@ def decay_clusters(conn, cfg: dict, older_than_days: int = 7) -> dict:
 
 # ── search (spec 9.1) ───────────────────────────────────────────────────────
 
-def search(conn, cfg: dict, query: str, limit: int = 10) -> list[dict]:
+def search(conn, cfg: dict, query: str, limit: int = 10, offset: int = 0,
+           status: str | None = None) -> dict:
+    """Semantic search over live cards, paginated (browse-filter friendly).
+
+    Returns {"total", "cards"} where each card carries the browse fields plus
+    a relevance score. Optional status filter (ready|served) — archived cards
+    are never in the pool."""
     vec = embed_mod.embed_one(query)
     if vec is None:
-        return []
+        return {"total": 0, "cards": []}
     pool = embed_mod.card_pool(conn)
-    scored = [(cid, embed_mod.cosine(vec, other)) for cid, other in pool]
-    scored.sort(key=lambda t: t[1], reverse=True)
+    if status:
+        ids = [cid for cid, _ in pool]
+        if ids:
+            marks = ",".join("?" for _ in ids)
+            keep = {r["id"] for r in conn.execute(
+                f"SELECT id FROM cards WHERE id IN ({marks}) AND status = ?",
+                (*ids, status))}
+        else:
+            keep = set()
+        pool = [(cid, v) for cid, v in pool if cid in keep]
+    scored = sorted(((cid, embed_mod.cosine(vec, v)) for cid, v in pool),
+                    key=lambda t: t[1], reverse=True)
+    total = len(scored)
     result = []
-    for cid, score in scored[:limit]:
+    for cid, score in scored[offset:offset + limit]:
         row = conn.execute(
-            """SELECT c.id, c.title, c.source_url, cl.label AS topic, c.anchor_quote
+            """SELECT c.id, c.title, c.hook, c.status, c.source_url, c.anchor_quote,
+                      c.diagram_type, c.is_wildcard, c.created_at, c.served_at,
+                      cl.label AS topic
                FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
                WHERE c.id = ?""", (cid,)
         ).fetchone()
         if row:
             result.append({**dict(row), "score": round(score, 4)})
-    return result
+    return {"total": total, "cards": result}

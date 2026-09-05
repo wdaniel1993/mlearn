@@ -30,6 +30,7 @@ generate:
   api_key_env: API_SERVER_KEY
   temperature: 0.4
   max_retries: 3
+  reasoning_effort: max
 
 embed:
   provider: local

@@ -43,6 +43,7 @@ generate:
   api_key_env: API_SERVER_KEY
   temperature: 0.4
   max_retries: 3
+  reasoning_effort: max   # DeepSeek-family: max reasoning (generation quality)
 
 # --- Embeddings (always local — small model, rarely re-embedded) ---
 embed:

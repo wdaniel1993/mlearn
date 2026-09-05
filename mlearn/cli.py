@@ -214,16 +214,19 @@ def signal(card_id: int = typer.Argument(...),
 
 @app.command()
 def search(query: str = typer.Argument(...),
-           limit: int = typer.Option(10, "--limit", min=1, max=25),
+           limit: int = typer.Option(10, "--limit", min=1, max=50),
+           offset: int = typer.Option(0, "--offset", min=0),
+           status: str | None = typer.Option(None, "--status", help="ready|served"),
            json_out: bool = typer.Option(False, "--json")):
-    """Semantic search over cards."""
+    """Semantic search over cards (paginated, browse-filter friendly)."""
     cfg, conn = _load_runtime(json_out)
-    result = select_mod.search(conn, cfg, query, limit)
+    res = select_mod.search(conn, cfg, query, limit=limit, offset=offset, status=status)
     if json_out:
-        _json_out(result)
+        _json_out(res)
     else:
-        for r in result:
-            print(f"{r['score']:.3f}  #{r['id']} [{r['topic']}] {r['title']}")
+        print(f"{res['total']} matches")
+        for h in res["cards"]:
+            print(f"  #{h['id']} [{h['topic']}] {h['score']:.2f} {h['title']}")
 
 
 @app.command()
@@ -320,11 +323,23 @@ def card(card_id: int = typer.Argument(...),
 @app.command()
 def cards(status: str | None = typer.Option(None, help="ready|served|archived"),
           topic: str | None = typer.Option(None),
+          q: str | None = typer.Option(None, "--q", help="semantic filter over the browse set"),
           limit: int = typer.Option(20, "--limit", min=1, max=100),
           offset: int = typer.Option(0, "--offset", min=0),
           json_out: bool = typer.Option(False, "--json")):
-    """Paginated card browse (for UIs/endless scroll)."""
+    """Paginated card browse (for UIs/endless scroll). With --q, the browse set is
+    ranked semantically instead of by insertion order."""
     cfg, conn = _load_runtime(json_out)
+    if q:
+        data = select_mod.search(conn, cfg, q, limit=limit, offset=offset, status=status)
+        data["limit"], data["offset"] = limit, offset
+        if json_out:
+            _json_out(data)
+        else:
+            print(f"{data['total']} matches (offset {offset})")
+            for h in data["cards"]:
+                print(f"  #{h['id']} [{h['topic']}] {h['score']:.2f} {h['title']}")
+        return
     where, params = "WHERE 1=1", []
     if status:
         where += " AND c.status = ?"

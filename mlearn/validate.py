@@ -11,6 +11,7 @@ MIN_BODY_WORDS = 200
 MAX_BODY_WORDS = 500
 MAX_ANCHOR_WORDS = 25
 MIN_PROMPTS = 2
+MAX_DIAGRAM_LINES = 10  # simple, very understandable diagrams only (no walls)
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?%?")
 
@@ -106,6 +107,14 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path) -> tuple[
     ok, err = mermaid_valid(card.get("diagram_src", ""), tools_dir)
     if not ok:
         errors.append(f"mermaid parse failed: {err} (C6)")
+
+    src_lines = [ln for ln in str(card.get("diagram_src", "")).splitlines()
+                 if ln.strip() and not ln.strip().startswith("%%")]
+    if len(src_lines) > MAX_DIAGRAM_LINES:
+        errors.append(f"diagram too busy: {len(src_lines)} lines > {MAX_DIAGRAM_LINES} "
+                      f"(simple, very understandable diagrams only)")
+    elif not src_lines:
+        errors.append("diagram_src must be non-empty mermaid (C6)")
 
     ok, err = figures_pass(
         card.get("diagram_type", ""), card.get("diagram_src", ""),
