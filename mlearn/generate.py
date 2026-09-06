@@ -76,45 +76,61 @@ VISUAL RULE — exactly ONE main image per card:
   no other main image; diagram_src must be an empty string.
 - Mermaid diagrams: ZERO TO MANY, ONLY as inline ```mermaid fences embedded in
   body_md (each parse-valid, <= 10 lines). NEVER as a standalone main image.
-  Choose the TEMPLATE TYPE to match the content — never default to text boxes:
-    - REAL GRAPHS for numbers & trends: chart-column-simple, chart-bar-plain-text,
-      chart-line-plain-text (lists: label = axis/series name, value = <number>)
-    - SHARES & proportions: relation-circle-circular-progress (lists: label,
-      desc; labels like '92%')
-    - CONTRASTS / pros-cons: compare-swot, compare-binary-horizontal-simple-fold
-    - STEPS / timelines: sequence-steps-badge-card, sequence-timeline-plain-text
-    - LEVELS / pyramids: list-pyramid-badge-card (max 6 items — for more use
-      list-column-done-list / list-grid-badge-card, they SCALE to 8+)
-    - HUBS / relations: relation-network-simple-circle-node
-    - Plain enumerations ONLY as a last resort: list-grid-simple
-  NOTE: prefer templates with real graphics (charts, rings, icons, illustrations)
-  over plain text boxes; list-pyramid-* renders at most 6 items by design and
-  truncation is detected — NEVER drop items to fit.
+
+AntV spec syntax (official AntV Infographic skill):
+  - data blocks indent with TWO spaces; array items start with "- ";
+    item keys: label (required), plus optional value / desc / icon.
+  - EVERY main data item gets an icon: "icon <keyword phrase>" with SPACES,
+    no hyphens — e.g. icon rocket launch, icon shield check, icon chart line,
+    icon arrow up, icon banknote, icon users, icon book. Icons make the
+    banner feel alive; never omit them for list/sequence/compare items.
+  - Use the ONE data field matching the template family (never mix):
+      list-*     -> lists     (- label ... [desc/value/icon])
+      sequence-* -> sequences (- label ... [icon]; optional "order asc")
+      chart-*    -> values    (- label <category> / value <number>, ordered)
+      compare-*  -> compares  (- label ... children ...; binary: exactly 2
+                                roots, each side under its own children)
+      relation-* -> nodes + relations
+      hierarchy-*-> root with children
+  - NEVER add a theme block (the engine applies the fixed dark theme).
+  Template TYPE by content (official AntV guidance):
+    - stats / trends over time  -> chart-line-plain-text (values)
+    - group number comparison   -> chart-bar-plain-text / chart-column-simple (values)
+    - shares / proportions      -> chart-pie-donut-plain-text (values)
+    - step-by-step / evolution  -> sequence-snake-steps-simple / sequence-timeline-simple (sequences)
+    - two-sided comparison      -> compare-binary-horizontal-simple-fold (compares)
+    - pros / cons, SWOT         -> compare-swot (compares)
+    - parallel point list       -> list-grid-badge-card / list-column-done-list (lists)
+    - level stacks              -> list-column-done-list (lists)
+    - node / process relations  -> relation-dagre-flow-tb-simple-circle-node
+  Prefer real graphics (graphs, pies, icons) over bare text boxes; item drops
+  (template capacity) are detected and fail the attempt — never drop items.
   DATA best practices (AntV infographic-design guide):
     - ONE message per item. Label = the headline fact (a number or 1-3 words);
       desc = the plain explanation. NEVER repeat the label's numbers in desc.
     - Hero statistic FIRST (visual hierarchy), then supporting items.
     - Parallel phrasing across same-level items ('92% of…', '~28% of…').
     - 3-8 items, short title, terse text everywhere (banner space is tight).
-      More items than 6? Use list-column-* or list-grid-*; never drop content.
     - Neutral factual tone: no metaphors, emotions, or cultural references.
   Valid examples:
     infographic chart-column-simple
     data
       title Yields by year
-      lists
+      values
         - label 2020
           value 12.5
         - label 2021
           value 20
-    infographic list-grid-simple
+    infographic list-grid-badge-card
     data
       title Match the market, don't beat it
       lists
         - label 92%
           desc of active funds underperformed the S&P 500 over 15 years
+          icon chart line
         - label ~28%
           desc of lifetime returns eaten by a 1% annual fee
+          icon arrow up
   Keep labels ultra-short and desc under 25 words. If spec render fails it is
   fed back to you — then fix the shape or fall back to infographic_svg.
 - infographic_svg is the FALLBACK lane (only when a spec is not practical):
