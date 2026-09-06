@@ -252,11 +252,15 @@ def figures_pass(diagram_type: str, diagram_src: str, figures_json: str | None,
 
 
 def validate_card(card: dict, source_body: str, tools_dir: str | Path,
-                  infographic_strict: bool = True) -> tuple[bool, list[str]]:
+                  infographic_strict: bool = True,
+                  banner_check: bool = True) -> tuple[bool, list[str]]:
     """All hard gates. Return (ok, [error strings]).
 
     infographic_strict=False when the infographic was rendered by the AntV
-    engine (banner aspect): the fill-height layout gate does not apply."""
+    engine (banner aspect): the fill-height layout gate does not apply.
+    banner_check=False skips the banner visual-QA (used by in-place content
+    improves where the banner is unchanged — re-gating an old icon-less
+    banner would block unrelated content fixes)."""
     errors: list[str] = []
 
     if not anchor_in_body(card.get("anchor_quote", ""), source_body):
@@ -282,7 +286,7 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path,
         ok, err = infographic_valid(infographic, infographic_strict)
         if not ok:
             errors.append(f"infographic invalid: {err} (C6)")
-        elif _visual_qa_enabled():
+        elif _visual_qa_enabled() and banner_check:
             ok, err = _load_visualqa().qa_banner_svg(infographic)
             if not ok:
                 errors.append(f"infographic visual QA: {err} (C6)")
