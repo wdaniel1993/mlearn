@@ -18,7 +18,8 @@ def slugify(title: str) -> str:
     return s.strip("-")[:60].strip("-") or "card"
 
 
-def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row]) -> str:
+def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row],
+                infographic_name: str | None = None) -> str:
     frontmatter = {
         "id": card["id"],
         "title": card["title"],
@@ -38,6 +39,9 @@ def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row]) -> str:
     md.append(card["diagram_src"].rstrip())
     md.append("```")
     md.append("")
+    if infographic_name:
+        md.append(f"![[{infographic_name}]]")
+        md.append("")
     md.append(card["body_md"].rstrip())
     md.append("")
     md.append("---")
@@ -58,7 +62,7 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
     Archived cards are NOT written (a re-rolled card replaces its old file),
     and stale files — present on disk but with no live card id in the DB —
     are pruned so Obsidian never shows obsolete content."""
-    cards_dir = Path(cards_dir)
+    cards_dir = Path(cards_dir).resolve()
     rows = conn.execute(
         """SELECT c.*, cl.label AS cluster_label
            FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
@@ -74,8 +78,14 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
         ).fetchall()
         topic_dir = cards_dir / card["cluster_label"]
         topic_dir.mkdir(parents=True, exist_ok=True)
-        path = topic_dir / f"{card['created_at'][:10]}-{slugify(card['title'])}.md"
-        path.write_text(render_card(card, prompts), encoding="utf-8")
+        stem = f"{card['created_at'][:10]}-{slugify(card['title'])}"
+        path = topic_dir / f"{stem}.md"
+        inf_name = None
+        if card["infographic_svg"]:
+            inf_name = f"{stem}_infographic.svg"
+            (topic_dir / inf_name).write_text(card["infographic_svg"], encoding="utf-8")
+            expected.add(topic_dir / inf_name)
+        path.write_text(render_card(card, prompts, inf_name), encoding="utf-8")
         expected.add(path)
         written.append(path)
     _prune_stale(cards_dir, expected)
@@ -83,14 +93,15 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
 
 
 def _prune_stale(cards_dir: Path, expected: set[Path]) -> int:
-    """Remove .md files that this projection run did not write.
+    """Remove projection files that this run did not write (.md cards and
+    .svg infographic attachments).
 
     Covers dead card ids AND files from older DB generations whose ids were
     reused by new cards (a plain id check would keep them alive forever)."""
     removed = 0
     if not cards_dir.is_dir():
         return 0
-    for md in cards_dir.rglob("*.md"):
+    for md in list(cards_dir.rglob("*.md")) + list(cards_dir.rglob("*.svg")):
         try:
             if md.resolve() not in expected:
                 md.unlink()

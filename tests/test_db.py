@@ -66,6 +66,7 @@ def test_insert_card_unknown_cluster_raises(db):
     with pytest.raises(ValueError):
         db_mod.insert_card(db, item_id=None, cluster_label="nope", title="t", hook="h",
                            body_md="b" * 500, diagram_type="concept", diagram_src="flowchart TD\nA-->B",
+                           infographic_svg=None,
                            figures_json=None, source_url="https://x.example", anchor_quote="q",
                            prompts=[])
 

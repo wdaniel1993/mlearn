@@ -99,6 +99,7 @@ def seed(file: Path = typer.Argument(..., help="JSON file of hand-written cards"
             conn, item_id=item_id, cluster_label=card["cluster"],
             title=card["title"], hook=card["hook"], body_md=card["body_md"],
             diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
+            infographic_svg=card.get("infographic_svg"),
             figures_json=figures_json, source_url=card["source_url"],
             anchor_quote=card["anchor_quote"], prompts=card["prompts"],
         )
