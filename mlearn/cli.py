@@ -173,6 +173,67 @@ def generate(count: int = typer.Option(12, "--count", min=1,
 
 
 @app.command()
+def improve(card_ids: list[int] = typer.Argument(None,
+                                                 help="card id(s) to improve in place"),
+            note: str = typer.Option("", "--note", "-n",
+                                     help="what to improve (free text)"),
+            scope: str = typer.Option("content", "--scope",
+                                      help="content|banner|all"),
+            fix_abbr: bool = typer.Option(False, "--fix-abbr",
+                                          help="auto-improve ready cards with "
+                                               "unexplained abbreviations"),
+            json_out: bool = typer.Option(False, "--json")):
+    """Improve card(s) IN PLACE: same id, only the fields in scope change,
+    full validation gates re-run, the old card stays untouched on failure.
+    Never burns the source item or the topic (unlike archive+re-roll)."""
+    from . import improve as improve_mod
+
+    cfg = config_mod.resolve_paths(config_mod.load())
+    conn = db_mod.connect(cfg["paths"]["db"])
+    db_mod.init_db(conn)
+    targets: list[tuple[int, str]] = []
+    if fix_abbr or card_ids:
+        rows = conn.execute(
+            "SELECT id, title, hook, body_md, anchor_quote FROM cards "
+            "WHERE status = 'ready' ORDER BY id").fetchall()
+        wanted = set(card_ids or [])
+        for r in rows:
+            if wanted and r["id"] not in wanted:
+                continue
+            bad = validate_mod.unexplained_abbrs(
+                r["title"], r["hook"], r["body_md"], r["anchor_quote"])
+            if fix_abbr:
+                if bad:
+                    targets.append(
+                        (r["id"], "Spell out at first use: " + ", ".join(bad[:10])))
+            else:
+                targets.append((r["id"], note))
+        if fix_abbr:
+            missing = wanted - {r["id"] for r in rows}
+            for mid in sorted(missing):
+                targets.append((mid, ""))  # will report card not found
+    results = []
+    for cid, cnote in targets:
+        results.append(improve_mod.improve_card(
+            conn, cfg, cid, note=cnote, scope=scope))
+    ok_all = all(r["ok"] for r in results)
+    if results:
+        project_mod.write_cards(conn, cfg["paths"]["cards_dir"])
+    if json_out:
+        _json_out({"results": results, "ok_all": ok_all})
+    else:
+        for r in results:
+            if r["ok"]:
+                print(f"card {r['card_id']}: improved ({', '.join(r['changed'])}) "
+                      f"in {r['attempts']} attempt(s)")
+            else:
+                print(f"card {r['card_id']}: NOT improved — {r.get('error', 'unknown')} "
+                      "(old card kept)")
+        if not results:
+            print("no cards matched")
+
+
+@app.command()
 def next(count: int = typer.Option(1, "--count", min=1),
          json_out: bool = typer.Option(False, "--json")):
     """Serve interleaved cards + due prompts (instant; never generates)."""
