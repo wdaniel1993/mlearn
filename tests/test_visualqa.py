@@ -44,6 +44,22 @@ def test_banner_garbage_rejected():
     assert not vqa.qa_banner_svg("<svg/>")[0]
 
 
+def test_banner_dangling_icon_refs_rejected():
+    ok, msg = vqa.qa_banner_svg(
+        '<svg viewBox="0 0 100 100"><text>Alpha</text><text>Beta</text>'
+        '<use href="#rsc-123" /></svg>')
+    assert not ok and "dangling" in msg
+    big = ('<svg viewBox="0 0 400 400">'
+           '<text>Alpha</text><text>Beta</text>'
+           '<defs><symbol id="rsc-123" viewBox="0 0 512 512">'
+           '<path d="M1 1 L10 1 L10 10 Z"/></symbol></defs>'
+           '<use href="#rsc-123" width="30" height="30"/>'
+           + "<!-- padding -->" * 60 + "</svg>")
+    assert len(big) > 250
+    ok2, msg2 = vqa.qa_banner_svg(big)
+    assert ok2, msg2
+
+
 FLOW = """flowchart LR
     A[Past delays fade] -->|feels smooth| B[Short estimate]
     B --> C[Real delays hit]

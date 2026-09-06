@@ -6,7 +6,10 @@
 // hard 10s timeout). We listen for 'rendered' instead, which fires as soon as
 // the SVG tree is composed, and export with embedResources:false.
 import { parseHTML, DOMParser } from 'linkedom';
-import { Infographic, exportToSVG, setDefaultFont } from '@antv/infographic';
+import {
+  Infographic, exportToSVG, setDefaultFont,
+} from '@antv/infographic';
+import { loadResource, waitForSvgLoads } from './node_modules/@antv/infographic/esm/resource/index.js';
 
 setDefaultFont('system-ui, -apple-system, "Segoe UI", Roboto, sans-serif');
 
@@ -60,11 +63,60 @@ process.stdin.on('end', async () => {
       container, editable: false, width: 800, height: 520,
       theme: 'dark',
     });
+    // Icons are fetched async from a remote service. The engine's internal
+    // loads do not survive under linkedom, so PRE-LOAD every icon keyword
+    // into the module resource cache: the engine's own loadResource then
+    // resolves from cache synchronously and its <use> refs get real defs.
+    const keywords = [...spec.matchAll(/^\s*icon\s+(.+)$/gm)]
+      .map((m) => m[1].trim()).filter((k) => k.length > 1);
+    const preSvg = document.createElementNS(
+      'http://www.w3.org/2000/svg', 'svg');
+    preSvg.setAttribute('width', '1'); preSvg.setAttribute('height', '1');
+    document.body.appendChild(preSvg);
+    await Promise.all(keywords.map(async (kw) => {
+      try {
+        await Promise.race([
+          loadResource(preSvg, 'icon', kw, { label: kw }),
+          new Promise((r) => setTimeout(r, 6000)),
+        ]);
+      } catch (e) { /* keyword fetch failed — icon slot stays empty */ }
+    }));
     const svg = await new Promise((resolve, reject) => {
-      infographic.on('rendered', ({ node }) => {
-        exportToSVG(node, { embedResources: false })
-          .then((s) => resolve(s.outerHTML))
-          .catch(reject);
+      infographic.on('rendered', async ({ node }) => {
+        try {
+          // Icons/images load asynchronously from a remote service; wait a
+          // bounded time for them so the export carries real icon art
+          // (previously every <use href="#rsc-..."> referenced a def that
+          // never existed -> blank icon slots). embedResources inlines the
+          // fetched images as data URIs (self-contained svg; fonts were
+          // already pinned to the system stack via setDefaultFont, so no
+          // font fetching happens).
+          await Promise.race([
+            waitForSvgLoads(15_000),
+            new Promise((r) => setTimeout(r, 15_000)),
+          ]);
+          if (process.env.DEBUG_ICONS) {
+            const h = node.outerHTML;
+            console.error(`[debug] symbols=${(h.match(/<symbol/g) || []).length} `
+              + `uses=${(h.match(/<use/g) || []).length} `
+              + `rscDefs=${(h.match(/id="rsc-/g) || []).length} `
+              + `images=${(h.match(/<image/g) || []).length}`);
+          }
+          const out = await exportToSVG(node, { embedResources: true });
+          // The exporter drops loaded <symbol> defs under linkedom; re-attach
+          // any icon symbols that landed in the live tree so every <use> has
+          // a real target (blank icon slots bug).
+          let s = out.outerHTML;
+          const liveSymbols = Array.from(node.querySelectorAll('symbol'))
+            .filter((sym) => sym.id && !s.includes(`id="${sym.id}"`));
+          if (liveSymbols.length) {
+            const frag = liveSymbols.map((sym) => sym.outerHTML).join('');
+            s = s.replace(/<\/svg>\s*$/, `<defs>${frag}</defs></svg>`);
+          }
+          resolve(s);
+        } catch (e) {
+          reject(new Error(e && e.message ? e.message : JSON.stringify(e)));
+        }
       });
       infographic.on('error', (e) => reject(new Error(
         e && e.message ? e.message

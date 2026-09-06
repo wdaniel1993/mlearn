@@ -136,6 +136,12 @@ def improve_card(conn, cfg: dict, card_id: int, note: str = "",
         if not patch:
             reasons.append("attempt %d: no fields in scope returned" % attempt)
             continue
+        if scope == "banner" and "infographic_spec" not in patch:
+            reasons.append(
+                "attempt %d: banner scope requires a re-emitted infographic_spec "
+                "(the banner renders from the spec; icons were blank — return the "
+                "spec so the banner re-renders)" % attempt)
+            continue
         if "prompts" in patch and not isinstance(patch["prompts"], list):
             reasons.append("attempt %d: prompts must be a list" % attempt)
             continue

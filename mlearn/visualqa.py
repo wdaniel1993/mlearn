@@ -49,6 +49,15 @@ def qa_banner_svg(svg: str) -> tuple[bool, str]:
         )
     if len(svg) < 250:
         return False, f"banner suspiciously small ({len(svg)} chars)"
+    ids = set(re.findall(r'\bid="([^"]+)"', svg))
+    uses = re.findall(r'<use\b[^>]*\b(?:href|xlink:href)="#([^"]+)"', svg)
+    dangling = [u for u in uses if u not in ids]
+    if dangling:
+        return False, (
+            f"banner has {len(dangling)} dangling icon refs (no matching "
+            f"symbol/def: {', '.join(dangling[:3])}) — these render as BLANK "
+            "icon slots; icons must resolve to real defs"
+        )
     return True, ""
 
 
