@@ -1,0 +1,15 @@
+infographic list-grid-badge-card
+data
+  title Three ideas built behavioral economics
+  lists
+    - label Bounded rationality
+      desc Simon, 1950s — reason is limited, so people satisfice
+      icon brain
+    - label Prospect theory
+      desc Kahneman and Tversky, 1979 — losses hurt about 2.25x more than gains please
+      icon scale
+    - label Nudge
+      desc Thaler and Sunstein, 2008 — steer the environment, never forbid
+      icon magnet
+theme
+  palette #22d3ee #f59e0b #a78bfa
