@@ -125,7 +125,12 @@ def improve_card(conn, cfg: dict, card_id: int, note: str = "",
             user += "\n\nYour previous attempt failed: " + "; ".join(reasons[-3:])
             user += ("\nReturn ONLY the corrected fields. If the failure is about "
                      "abbreviations, add parenthetical definitions.")
-        raw = gen.call_llm(cfg, gen.build_system(""), user)
+        raw = None
+        try:
+            raw = gen.call_llm(cfg, gen.build_system(""), user)
+        except Exception as e:  # gateway stalls/read-timeouts must not kill the run
+            reasons.append(f"attempt {attempt}: llm error: {e.__class__.__name__}")
+            continue
         if raw is None:
             reasons.append(f"attempt {attempt}: no response")
             continue
