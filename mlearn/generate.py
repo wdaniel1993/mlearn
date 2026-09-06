@@ -312,6 +312,35 @@ Previous attempt:
 {previous}
 """
 
+# Working example given to the model on hue/format retries: the model keeps
+# re-rolling the SAME single-color or header-less spec across attempts; a
+# concrete green-spec breaks the loop (it has a palette and icons, and the
+# header on line 1).
+HUE_FIX_EXAMPLE = """
+MANDATORY: model your corrected infographic_spec on this WORKING example
+(engine-verified, renders with 3+ bright colors and icons):
+
+infographic chart-column-simple
+data
+  title Active vs Passive funds
+  values
+    - label Active funds
+      value 82
+      desc underperform the index
+      icon arrow down
+    - label Passive funds
+      value 18
+      desc track the index
+      icon chart line
+theme
+  palette #22d3ee #22c55e #fbbf24
+
+Rules it obeys: 'infographic <template>' on line 1; a data section with
+values/lists/sequences/compares (template-appropriate); every item carrying
+label + desc + icon; 3-5 BRIGHT palette hexes. Follow this structure exactly
+with YOUR content. If the previous error was about a single color or a
+missing header, this fixes both."""
+
 
 def build_system(topic: str) -> str:
     guard = TOPIC_GUARDRAILS.get(topic, "")
@@ -415,7 +444,13 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
     for attempt in range(1, attempts + 1):
         try:
             if previous:
-                raw = call_llm(cfg, system, RETRY_USER.format(errors=errors, previous=json.dumps(previous)))
+                retry_user = RETRY_USER.format(
+                    errors=errors, previous=json.dumps(previous))
+                if any(("accent hue" in e or "spec invalid" in e
+                        or "single-color" in e or "single color" in e)
+                       for e in errors):
+                    retry_user += HUE_FIX_EXAMPLE
+                raw = call_llm(cfg, system, retry_user)
             else:
                 raw = call_llm(cfg, system, user)
         except Exception as e:
@@ -458,7 +493,7 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
 
 
 def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True,
-                   regenerate: bool = False) -> dict:
+                   regenerate: bool = False, workers: int = 1) -> dict:
     """Phase-2 pipeline: dedupe -> generate -> validate -> enqueue.
     Allocation: round-robin over seed topics (bandit arrives in Phase 4).
     regenerate=True: archive the ready pool and re-roll it (prompt/style
@@ -481,14 +516,14 @@ def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True,
                 "projected": 0, "locked": True}
     try:
         _USED_TEMPLATES.clear()
-        return _run_generation_locked(conn, cfg, count, do_harvest, regenerate)
+        return _run_generation_locked(conn, cfg, count, do_harvest, regenerate, workers)
     finally:
         fcntl.flock(lock_fh, fcntl.LOCK_UN)
         lock_fh.close()
 
 
 def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
-                           regenerate: bool) -> dict:
+                           regenerate: bool, workers: int = 1) -> dict:
     from . import harvest as harvest_mod
 
     log_path = Path(cfg["paths"]["data_dir"]) / "logs" / "generate.log"
@@ -520,6 +555,57 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
     cards_out = []
     wc_done = False  # one wildcard slot per run (bubble counter)
     wc_rate = cfg.get("wildcard_rate", 0.15)
+
+    import concurrent.futures as _cf
+    _claims: list[dict] = []
+
+    def _drain_claims() -> None:
+        """Generate all claimed items in parallel (LLM + node render only —
+        every DB write stays on the main thread, so sqlite stays single
+        writer) and insert the results."""
+        nonlocal made, failed
+        if not _claims:
+            return
+
+        def _work(claim: dict):
+            return generate_card(
+                cfg, claim["topic"], claim["title"], claim["url"], claim["body"])
+
+        with _cf.ThreadPoolExecutor(max_workers=max(1, min(workers, len(_claims)))) as ex:
+            futs = {ex.submit(_work, c): c for c in _claims}
+            for fut in _cf.as_completed(futs):
+                claim = futs[fut]
+                card, reasons = fut.result()
+                if card is None:
+                    conn.execute(
+                        "UPDATE items SET processed = 1 WHERE id = ?", (claim["id"],))
+                    conn.commit()
+                    failed += 1
+                    detail = " | ".join(reasons[-3:]) if reasons else "unknown"
+                    note(f"DROP (3 attempts): {claim['url']} :: {detail}")
+                    continue
+                card_id = db_mod.insert_card(
+                    conn, item_id=claim["id"], cluster_label=claim["topic"],
+                    title=card["title"], hook=card["hook"], body_md=card["body_md"],
+                    diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
+                    infographic_svg=card.get("infographic_svg"),
+                    figures_json=card["figures_json"], source_url=claim["url"],
+                    anchor_quote=card["anchor_quote"],
+                    embedding=embed_mod.pack(claim["vec"]) if claim["vec"] else None,
+                    prompts=card["prompts"], is_wildcard=claim["is_wc"],
+                )
+                conn.execute(
+                    "UPDATE items SET processed = 1 WHERE id = ?", (claim["id"],))
+                conn.commit()
+                made += 1
+                if claim["vec"]:
+                    pool.append((card_id, claim["vec"]))
+                cards_out.append(card_id)
+                tpl = _template_of(card)
+                if tpl:
+                    _USED_TEMPLATES.append(tpl)
+                note(f"CARD {card_id}: {card['title']} (topic={claim['topic']})")
+        _claims.clear()
     # Phase 2: round-robin over topics.
     for round_i in range(1000):
         if made >= count:
@@ -616,31 +702,15 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                 continue
             body_for_llm = " ".join(text.split())
             body_for_llm = " ".join(body_for_llm.split()[:MAX_BODY_WORDS_FOR_LLM])
-            card, reasons = generate_card(cfg, topic, item["title"] or "", item["url"], body_for_llm)
-            if card is None:
-                conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (item["id"],))
-                conn.commit()
-                failed += 1
-                detail = " | ".join(reasons[-3:]) if reasons else "unknown"
-                note(f"DROP (3 attempts): {item['url']} :: {detail}")
-                continue
-            card_id = db_mod.insert_card(
-                conn, item_id=item["id"], cluster_label=topic,
-                title=card["title"], hook=card["hook"], body_md=card["body_md"],
-                diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
-                infographic_svg=card.get("infographic_svg"),
-                figures_json=card["figures_json"], source_url=item["url"],
-                anchor_quote=card["anchor_quote"],
-                embedding=embed_mod.pack(vec) if vec else None,
-                prompts=card["prompts"], is_wildcard=is_wc,
-            )
-            conn.execute("UPDATE items SET processed = 1 WHERE id = ?", (item["id"],))
-            conn.commit()
-            made += 1
-            if vec:
-                pool.append((card_id, vec))
-            cards_out.append(card_id)
-            note(f"CARD {card_id}: {card['title']} (topic={topic})")
+            _claims.append({
+                "id": item["id"], "topic": topic, "title": item["title"] or "",
+                "url": item["url"], "body": body_for_llm,
+                "vec": vec, "is_wc": is_wc,
+            })
+            if len(_claims) >= workers:
+                _drain_claims()
+        if _claims:
+            _drain_claims()
         if conn.execute("SELECT COUNT(*) n FROM items WHERE processed = 0").fetchone()["n"] == 0:
             break
     log_fh.close()
