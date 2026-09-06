@@ -57,10 +57,12 @@ def unexplained_abbrs(*texts: str) -> list[str]:
                 if m.group(1) not in _ABBR_WHITELIST})
     bad = []
     for a in abbrs:
-        if re.search(rf"\b{re.escape(a)}\s*\(", prose):
-            continue  # 'QLC (Quad-Level Cell)'
-        if re.search(rf"\(\s*{re.escape(a)}\s*\)", prose):
-            continue  # 'Quad-Level Cell (QLC)'
+        # 'QLC (Quad-Level Cell)' or 'Quad-Level Cell (QLC)'; allow a version
+        # suffix so 'COVID-19 (coronavirus disease 2019)' satisfies 'COVID'
+        if re.search(rf"\b{re.escape(a)}(?:-\d+)?\s*\(", prose):
+            continue
+        if re.search(rf"\(\s*{re.escape(a)}(?:-\d+)?\s*\)", prose):
+            continue
         bad.append(a)
     return bad
 _SVG_TAG_RE = re.compile(r"<script|</script|<iframe", re.I)
