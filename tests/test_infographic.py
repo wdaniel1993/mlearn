@@ -236,6 +236,39 @@ def test_foreignobject_text_accepted(tmp_path):
     assert ok, errs
 
 
+def test_spec_salvage(tmp_path):
+    """Prose/fence-wrapped specs (the model's #1 failure) get auto-rescued:
+    extract from the first 'infographic <template>' line to the closing
+    fence instead of spending a retry attempt on them."""
+    import shutil
+    from pathlib import Path
+    if shutil.which("node") is None:
+        import pytest
+        pytest.skip("node not available")
+    from mlearn.generate import apply_infographic_lane
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    wrapped = ("Sure! Here is the infographic:\n```infographic\n"
+               "infographic list-grid-badge-card\ndata\n  title Stats\n  lists\n"
+               "    - label 92%\n      desc underperforming the index\n"
+               "      icon chart line\n"
+               "    - label 28%\n      desc eaten by a small fee\n"
+               "      icon arrow up\n"
+               "theme\n  palette #22d3ee #22c55e\n```\nEnjoy!")
+    card = {"diagram_src": "", "infographic_spec": wrapped}
+    errs = apply_infographic_lane(card, tools)
+    assert errs == [], errs
+    assert card["infographic_svg"].startswith("<svg")
+    assert "\n```" not in card["infographic_spec"]
+
+
+def test_spec_salvage_rejects_garbage():
+    from mlearn.generate import apply_infographic_lane
+    card = {"infographic_spec": "this is not a spec at all, just prose."}
+    errs = apply_infographic_lane(card, "tools")
+    assert errs and "spec invalid" in errs[0]
+    assert "infographic_svg" not in card
+
+
 def test_apply_infographic_lane_renders_spec(tmp_path):
     import shutil
     from pathlib import Path

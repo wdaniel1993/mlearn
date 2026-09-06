@@ -33,6 +33,25 @@ def spec_valid(spec: str) -> tuple[bool, str]:
     return True, ""
 
 
+def salvage_spec(text: str) -> str | None:
+    """Rescue a spec wrapped in prose/fences (the model's most common
+    failure): take the substring from the first 'infographic <template>'
+    line up to the closing ``` fence (or end of text), then re-validate.
+    Returns the salvaged spec or None."""
+    m = re.search(r"infographic\s+[a-zA-Z0-9][a-zA-Z0-9-]*", text)
+    if not m:
+        return None
+    start = text.rfind("\n", 0, m.start()) + 1
+    end = text.find("```", m.start())
+    if end == -1:
+        end = len(text)
+    cand = text[start:end].strip()
+    ok, _ = spec_valid(cand)
+    if not ok:
+        return None
+    return cand
+
+
 def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
     """Render an infographic spec to SVG via node (tools/render_infographic.mjs).
 
