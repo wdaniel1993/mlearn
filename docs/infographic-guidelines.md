@@ -4,12 +4,15 @@ Source: AntV Infographic design guide — https://infographic.antv.vision/learn/
 (distilled; the model-facing contract lives in `mlearn/generate.py` VISUAL RULE).
 
 ## Lane model
-- Prefer `infographic_spec` (AntV engine, wide banner) for numbers, stat-contrasts,
-  steps, comparisons. The engine owns layout, typography, spacing, alignment —
-  templates implement the guide's specs (4px grid, 24/16/18/14 type scale, ≤2
-  alignments, item spacing 16–24px, 60% graphic / 40% text).
+- STRONG PREFERENCE: `infographic_spec` (AntV engine, wide banner) for the
+  main image — AntV templates ship icons, illustrations and graphs that make
+  the card feel alive. The engine owns layout, typography, spacing,
+  alignment — templates implement the guide's specs (4px grid, 24/16/18/14
+  type scale, ≤2 alignments, item spacing 16–24px, 60% graphic / 40% text).
+- Mermaid (`diagram_src`) only for branching flows / decision logic the spec
+  templates cannot express (conditionals, loops, state machines).
 - `infographic_svg` (raw hand-written poster) stays as the fallback lane.
-- Mermaid stays preferred for mechanisms, structures, flows.
+- Inline ```mermaid fences in the body are always allowed as extras.
 
 ## Template choice (spec lane)
 Match the template family to the content structure:
