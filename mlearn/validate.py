@@ -2,7 +2,9 @@
 is stored. Failure -> regenerate, max 3 attempts, then drop the item."""
 from __future__ import annotations
 
+import os
 import re
+import statistics
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -19,6 +21,19 @@ MAX_INF_TEXT_CHARS = 200  # per text element (span-wrapped lines inside foreignO
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?%?")
 _MERMAID_FENCE_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.S)
+_visual_qa = None
+
+
+def _visual_qa_enabled() -> bool:
+    global _visual_qa
+    if _visual_qa is None:
+        _visual_qa = os.environ.get("MLEARN_VISUAL_QA", "1").lower() not in ("0", "false", "no", "off")
+    return _visual_qa
+
+
+def _load_visualqa():
+    from . import visualqa as vqa
+    return vqa
 _SVG_TAG_RE = re.compile(r"<script|</script|<iframe", re.I)
 # event handlers and javascript: URLs are banned even inside engine-rendered
 # foreignObject HTML (AntV renders text as HTML spans — legit, but scrubbed)
@@ -238,6 +253,10 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path,
         ok, err = infographic_valid(infographic, infographic_strict)
         if not ok:
             errors.append(f"infographic invalid: {err} (C6)")
+        elif _visual_qa_enabled():
+            ok, err = _load_visualqa().qa_banner_svg(infographic)
+            if not ok:
+                errors.append(f"infographic visual QA: {err} (C6)")
         figures_visual = infographic_text(infographic) if ok else ""
     if not infographic.strip():
         errors.append("no main image (C6): the card needs an infographic "
@@ -253,6 +272,11 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path,
         ok, err = mermaid_valid(fence, tools_dir)
         if not ok:
             errors.append(f"inline mermaid fence {i + 1} parse failed: {err} (C6)")
+            continue
+        if _visual_qa_enabled():
+            ok, err = _load_visualqa().qa_mermaid(fence, tools_dir)
+            if not ok:
+                errors.append(f"inline mermaid fence {i + 1} visual QA: {err}")
 
     ok, err = figures_pass(
         card.get("diagram_type", ""), figures_visual,
