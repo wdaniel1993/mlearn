@@ -58,6 +58,7 @@ process.stdin.on('end', async () => {
   try {
     infographic = new Infographic({
       container, editable: false, width: 800, height: 520,
+      theme: 'dark',
     });
     const svg = await new Promise((resolve, reject) => {
       infographic.on('rendered', ({ node }) => {
