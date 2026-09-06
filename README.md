@@ -51,8 +51,16 @@ Every command supports `--json`.
 
 ## Sources (the forkable commons)
 
-` sources.yaml` is the shared allowlist. Topics seed clusters:
-**technology, innovation, finance, mental_health, self_improvement, psychology**.
+` sources.yaml` is the shared allowlist. Topics seed clusters —
+**the topic catalog is configurable** (config.yaml `topics:`), each entry a
+`{name, guardrail}` pair: the names become the initial clusters, the
+guardrails steer the generation prompt for that topic, and the round-robin
+allocation follows the live cluster table (so wildcard-born clusters join
+the rotation automatically). Default catalog: **technology, innovation,
+finance, mental_health, self_improvement, psychology**. Topics not in the
+catalog (and born clusters without a guardrail) fall back to a generic
+mechanism-and-evidence guardrail. `mlearn init` seeds exactly the configured
+names; `config.yaml.example` shows the full section.
 
 Two source kinds:
 

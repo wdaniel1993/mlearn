@@ -56,3 +56,33 @@ embed:
 api:
   host: 127.0.0.1
   port: 8311
+
+# --- Topic catalog (the top-level categories) ---
+# The initial clusters are born from this list; generation guardrails and the
+# round-robin allocation follow it. Add / remove / rename freely — a fresh
+# `mlearn init` seeds exactly these. Any topic NOT listed here gets the
+# generic mechanism guardrail (and clusters born later via the wildcard arm
+# are handled the same way). Omitting the section uses the built-in defaults
+# (see mlearn/config.py DEFAULTS["topics"]).
+topics:
+  - name: self_improvement
+    guardrail: >-
+      Topic self_improvement — require a study, dataset, or primary account
+      in the article. Reject anything whose substance is exhortation.
+  - name: mental_health
+    guardrail: >-
+      Topic mental_health — MECHANISM AND RESEARCH ONLY: explain mechanisms
+      and evidence. NEVER prescriptive, never framed as addressing the
+      reader's own condition, never diagnostic.
+  - name: innovation
+    guardrail: "Topic innovation — explain the mechanism behind the innovation or idea."
+  - name: technology
+    guardrail: "Topic technology — explain the mechanism of the technology: how it works, why."
+  - name: finance
+    guardrail: >-
+      Topic finance — how instruments, markets, and mechanisms work. NEVER
+      buy/sell/allocate guidance, never specific-security recommendations.
+  - name: psychology
+    guardrail: >-
+      Topic psychology — how the mind works: mechanisms, biases, effects,
+      and their evidence. NEVER diagnostic, NEVER prescriptive.

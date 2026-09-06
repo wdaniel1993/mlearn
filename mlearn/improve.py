@@ -127,7 +127,7 @@ def improve_card(conn, cfg: dict, card_id: int, note: str = "",
                      "abbreviations, add parenthetical definitions.")
         raw = None
         try:
-            raw = gen.call_llm(cfg, gen.build_system(""), user)
+            raw = gen.call_llm(cfg, gen.build_system(cfg, ""), user)
         except Exception as e:  # gateway stalls/read-timeouts must not kill the run
             reasons.append(f"attempt {attempt}: llm error: {e.__class__.__name__}")
             continue

@@ -36,7 +36,11 @@ def init(json_out: bool = typer.Option(False, "--json")):
     cfg = config_mod.resolve_paths(config_mod.load())
     conn = db_mod.connect(cfg["paths"]["db"])
     db_mod.init_db(conn)
-    cluster_ids = db_mod.ensure_seed_clusters(conn)
+    # Topic catalog from config (name + guardrail per topic); falls back to
+    # the DEFAULT catalog when the config has no `topics:` section.
+    topic_cfg = cfg.get("topics") or []
+    labels = [t["name"] for t in topic_cfg] or db_mod.SEED_TOPICS
+    cluster_ids = db_mod.ensure_seed_clusters(conn, labels)
     sources = []
     src_path = Path(cfg["paths"]["sources"])
     if src_path.is_file():
@@ -48,14 +52,14 @@ def init(json_out: bool = typer.Option(False, "--json")):
     result = {
         "db": cfg["paths"]["db"],
         "clusters": [{"id": cid, "label": label} for cid, label in
-                     zip(cluster_ids, db_mod.SEED_TOPICS)],
+                     zip(cluster_ids, labels)],
         "sources": sync,
     }
     if json_out:
         _json_out(result)
     else:
         print(f"db: {result['db']}")
-        print(f"clusters: {len(cluster_ids)} seed topics ({', '.join(db_mod.SEED_TOPICS)})")
+        print(f"clusters: {len(cluster_ids)} seed topics ({', '.join(labels)})")
         print(f"sources: +{sync['added']} added, {sync['updated']} updated")
 
 

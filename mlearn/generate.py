@@ -27,30 +27,22 @@ MAX_BODY_WORDS_FOR_LLM = 2500
 MAX_RETRIES = 3
 JSON_LIMIT = 3000
 
-TOPIC_GUARDRAILS = {
-    "mental_health": (
-        "Topic mental_health — MECHANISM AND RESEARCH ONLY: explain mechanisms and evidence "
-        "(how sleep debt affects affect regulation, what a study found, how it was designed). "
-        "NEVER prescriptive (no 'do X to fix your anxiety'), never framed as addressing the "
-        "reader's own condition, never diagnostic. If the article can only be rendered as "
-        "advice, refuse it."
-    ),
-    "finance": (
-        "Topic finance — how instruments, markets, and mechanisms work. NEVER buy/sell/allocate "
-        "guidance, never specific-security recommendations, no performance projections."
-    ),
-    "self_improvement": (
-        "Topic self_improvement — require a study, dataset, or primary account in the article. "
-        "Reject anything whose substance is exhortation (mere encouragement)."
-    ),
-    "technology": "Topic technology — explain the mechanism of the technology: how it works, why.",
-    "innovation": "Topic innovation — explain the mechanism behind the innovation or idea.",
-    "psychology": (
-        "Topic psychology — how the mind works: mechanisms, biases, effects, and their "
-        "evidence. NEVER diagnostic, NEVER prescriptive: no therapy guidance, no coping "
-        "advice, no 'this means you' claims. Describe the phenomenon and the studies."
-    ),
-}
+# Generic guardrail for topics not present in the config catalog (e.g.
+# clusters born later via the wildcard arm). Mechanism + evidence framing,
+# no prescription or diagnosis.
+GENERIC_GUARDRAIL = (
+    "Explain how this works: the mechanism, the evidence, and why it matters. "
+    "NEVER prescriptive (no do-this advice), NEVER diagnostic, NEVER framed at "
+    "the reader personally. If the source can only be rendered as advice, refuse it."
+)
+
+
+def topic_guardrail(cfg: dict, topic: str) -> str:
+    """Per-topic LLM guardrail from the configurable topic catalog."""
+    for t in cfg.get("topics", []) or []:
+        if t.get("name") == topic and t.get("guardrail"):
+            return t["guardrail"]
+    return GENERIC_GUARDRAIL
 
 _USED_TEMPLATES: list[str] = []
 
@@ -362,8 +354,8 @@ title, hook, body and anchor quote; then the token no longer counts as
 unexplained."""
 
 
-def build_system(topic: str) -> str:
-    guard = TOPIC_GUARDRAILS.get(topic, "")
+def build_system(cfg: dict, topic: str) -> str:
+    guard = topic_guardrail(cfg, topic)
     return SYSTEM.replace("{TGUARD}", guard)
 
 
@@ -473,7 +465,7 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
                   attempts: int = MAX_RETRIES) -> tuple[dict | None, list[str]]:
     """LLM card generation with validation-retry loop.
     Returns (card dict, reasons); reasons = [] on success."""
-    system = build_system(topic)
+    system = build_system(cfg, topic)
     user = USER.format(title=title, url=url, topic=topic, body=body) + _variety_note()
     previous = None
     errors: list[str] = []
@@ -589,7 +581,10 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
 
     pool = embed_mod.card_pool(conn)
     threshold = cfg["dedupe_threshold"]
-    topics = db_mod.SEED_TOPICS
+    # Round-robin over ALL clusters (seeds + born) so the allocation follows
+    # the live catalog; falls back to the default seed list on an empty db.
+    topics = [r["label"] for r in conn.execute(
+        "SELECT label FROM clusters ORDER BY id").fetchall()] or db_mod.SEED_TOPICS
     made = skipped = failed = 0
     cards_out = []
     wc_done = False  # one wildcard slot per run (bubble counter)
