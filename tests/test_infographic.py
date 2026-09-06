@@ -120,6 +120,54 @@ def test_truncation_detector():
     assert svg is not None and err == ""
 
 
+def test_compare_binary_labels_dropped_rejected():
+    """compare-binary-*/compare-swot engines drop the root labels (verified
+    against node 0.x): the detector must reject them and force a template
+    that renders both sides' identity (compare-hierarchy-left-right-*)."""
+    import shutil
+    from pathlib import Path
+    if shutil.which("node") is None:
+        import pytest
+        pytest.skip("node not available")
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    from mlearn.infographic import render_spec
+    svg, err = render_spec(
+        "infographic compare-binary-horizontal-simple-fold\n"
+        "data\n  title Index vs active\n  compares\n"
+        "    - label Index fund\n      icon chart line\n      children\n"
+        "        - label 0.05% fee\n          icon banknote\n"
+        "    - label Active fund\n      icon users\n      children\n"
+        "        - label 92% underperform\n          icon arrow down\n", tools)
+    assert svg is None and "dropped" in err
+    svg, err = render_spec(
+        "infographic compare-hierarchy-left-right-circle-node-pill-badge\n"
+        "data\n  title Two worlds\n  compares\n"
+        "    - label Index fund\n      children\n"
+        "        - label 0.05% fee\n          icon banknote\n"
+        "    - label Active fund\n      children\n"
+        "        - label 92% underperform\n          icon arrow down\n", tools)
+    assert svg is not None and err == ""
+
+
+def test_palette_luminance_gate():
+    """Palette colors sit on the engine's dark background: dark hexes are
+    rejected so the banner keeps readable contrast; bright ones pass."""
+    import shutil
+    from pathlib import Path
+    if shutil.which("node") is None:
+        import pytest
+        pytest.skip("node not available")
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    from mlearn.infographic import render_spec
+    base = ("infographic chart-column-simple\n"
+            "data\n  title Yield\n  values\n"
+            "    - label 2020\n      value 12.5\n    - label 2021\n      value 20\n")
+    svg, err = render_spec(base + "theme\n  palette #4f46e5 #06b6d4\n", tools)
+    assert svg is None and "too dark" in err and "#4f46e5" in err
+    svg, err = render_spec(base + "theme\n  palette #22d3ee #22c55e\n", tools)
+    assert svg is not None and err == ""
+
+
 def test_antv_banner_needs_non_strict_layout(tmp_path):
     """Engine-rendered banners are tight by construction: the fill-height
     layout gate only applies to the raw hand-written lane."""

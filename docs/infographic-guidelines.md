@@ -38,26 +38,37 @@ The model-facing contract lives in `mlearn/generate.py` (VISUAL RULE).
   - `relation-*` → `nodes` + `relations` (arrows: `A - 读写 -> B`)
   - `hierarchy-*` → `root` with nested `children`
 - `value` is a bare number; units live in `label`/`desc`.
-- **NEVER add a `theme` block** — our renderer forces the built-in dark theme
-  (`theme: 'dark'`); a spec-level theme overrides it and breaks contrast.
+- `theme` block is ALLOWED for richness, constrained:
+  - `palette` = 2–5 BRIGHT hexes (relative luminance ≥ 0.25 — the engine's
+    background is DARK #1F1F1F and text is white; dark palettes fail the
+    luminance gate): `#22d3ee #22c55e #10b981 #f59e0b #f97316 #eab308`
+  - `stylize linear-gradient | radial-gradient` only.
 
-## 3. Template selection (official guidance, choose by content)
+## 3. Template selection (VERIFIED against our engine — only these)
 
 | Content | Template | Data field |
 |---|---|---|
 | stats / trends over time | chart-line-plain-text | values |
-| group number comparison | chart-bar-plain-text / chart-column-simple | values |
-| shares / proportions | chart-pie-donut-plain-text | values |
-| step-by-step / evolution | sequence-snake-steps-simple / sequence-timeline-simple | sequences |
-| two-sided comparison | compare-binary-horizontal-simple-fold | compares |
-| pros/cons, SWOT | compare-swot | compares |
-| parallel point list | list-grid-badge-card / list-column-done-list | lists |
-| level stacks | list-column-done-list | lists |
-| node / process relations | relation-dagre-flow-tb-simple-circle-node | nodes + relations |
+| group / ranking of numbers | chart-column-simple | values |
+| shares / proportions | chart-pie-donut-plain-text / chart-wordcloud | values |
+| step-by-step / evolution | sequence-snake-steps-simple / sequence-funnel-simple | sequences |
+| multi-actor interaction | sequence-interaction-default-compact-card | sequences (swimlanes) + relations |
+| two-sided comparison | compare-hierarchy-left-right-circle-node-pill-badge | compares (2 roots + children) |
+| 2×2 matrix / quadrant | compare-quadrant-quarter-simple-card | compares (4 roots) |
+| point list / N facts | list-grid-badge-card / list-row-horizontal-icon-arrow | lists |
+| money / value flow | list-waterfall-badge-card | lists (value + desc) |
+| level stacks / ladder | list-column-done-list | lists |
+| hierarchy / tree | hierarchy-tree-tech-style-badge-card | root + children |
+| mind map / branches | hierarchy-mindmap-branch-gradient-capsule-item | root + children |
+| node / process graph | relation-dagre-flow-tb-simple-circle-node | nodes + relations |
 
-Prefer real graphics (graphs, pies, icons, illustrations) over bare text
-boxes; `list-*` text-box templates are the last resort. Item-cap truncation
-(list templates ~6–8) is DETECTED and fails the attempt — never drop items.
+**AVOID (engine silently drops labels, gate rejects):** compare-binary-*,
+compare-swot (roots vanish), list-pyramid-* (6-item cap).
+
+Prefer real graphics (graphs, pies, icons, swimlanes, quadrants) over bare
+text boxes; `list-*` grids are the fallback. Every banner gets a bright
+palette and item icons — the "alive" requirement. The full verified gallery
+lives in the mlearn-ops skill: `references/infographic-gallery.md`.
 
 ## 4. Data discipline (model-controlled)
 
@@ -75,7 +86,8 @@ boxes; `list-*` text-box templates are the last resort. Item-cap truncation
 - [ ] ONE data field used, matching the template family (lists/sequences/
       values/compares/nodes/root)
 - [ ] Every list/sequence/compare/node item has a sensible `icon`
-- [ ] No `theme` block (dark theme is engine-fixed)
+- [ ] `theme` palette uses 2–5 BRIGHT hexes (luminance ≥ 0.25); stylize is
+      linear/radial-gradient at most
 - [ ] compare-binary: exactly 2 roots, sides under `children`
 - [ ] chart-* uses ordered `values` with `label` + `value`
 - [ ] No JSON/explanation/multiple code blocks around the spec
