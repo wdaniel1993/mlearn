@@ -11,6 +11,8 @@ import struct
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import DEFAULTS as _DEFAULTS
+
 SCHEMA_VERSION = 1
 
 SCHEMA = """
@@ -142,15 +144,11 @@ END;
 """
 
 # Seed topics become the initial clusters (spec 4.1). A starting point,
-# not a ceiling — wildcard arm birth escapes them.
-SEED_TOPICS = [
-    "self_improvement",
-    "mental_health",
-    "innovation",
-    "technology",
-    "finance",
-    "psychology",
-]
+# not a ceiling — wildcard arm birth escapes them. The catalog itself is
+# configurable: config.yaml `topics:` (list of {name, guardrail}); this
+# constant mirrors the DEFAULT catalog (config.DEFAULTS["topics"]) so
+# callers without a config (tests, db-level helpers) keep working.
+SEED_TOPICS: list[str] = [t["name"] for t in _DEFAULTS["topics"]]
 
 
 def utcnow() -> str:

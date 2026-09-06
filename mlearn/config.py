@@ -38,6 +38,52 @@ DEFAULTS: dict = {
     },
     "embed": {"provider": "local", "model": "BAAI/bge-small-en-v1.5"},
     "api": {"host": "127.0.0.1", "port": 8311},
+    # Topic catalog = the initial clusters (seed topics). Each entry carries
+    # the LLM guardrail for that topic. Operators can add, remove, or rename
+    # topics here; generation, seeding, and round-robin allocation follow
+    # this list (plus any clusters born later via the wildcard arm).
+    "topics": [
+        {
+            "name": "self_improvement",
+            "guardrail": (
+                "Topic self_improvement — require a study, dataset, or primary account in the article. "
+                "Reject anything whose substance is exhortation (mere encouragement)."
+            ),
+        },
+        {
+            "name": "mental_health",
+            "guardrail": (
+                "Topic mental_health — MECHANISM AND RESEARCH ONLY: explain mechanisms and evidence "
+                "(how sleep debt affects affect regulation, what a study found, how it was designed). "
+                "NEVER prescriptive (no 'do X to fix your anxiety'), never framed as addressing the "
+                "reader's own condition, never diagnostic. If the article can only be rendered as "
+                "advice, refuse it."
+            ),
+        },
+        {
+            "name": "innovation",
+            "guardrail": "Topic innovation — explain the mechanism behind the innovation or idea.",
+        },
+        {
+            "name": "technology",
+            "guardrail": "Topic technology — explain the mechanism of the technology: how it works, why.",
+        },
+        {
+            "name": "finance",
+            "guardrail": (
+                "Topic finance — how instruments, markets, and mechanisms work. NEVER buy/sell/allocate "
+                "guidance, never specific-security recommendations, no performance projections."
+            ),
+        },
+        {
+            "name": "psychology",
+            "guardrail": (
+                "Topic psychology — how the mind works: mechanisms, biases, effects, and their "
+                "evidence. NEVER diagnostic, NEVER prescriptive: no therapy guidance, no coping "
+                "advice, no 'this means you' claims. Describe the phenomenon and the studies."
+            ),
+        },
+    ],
 }
 
 
