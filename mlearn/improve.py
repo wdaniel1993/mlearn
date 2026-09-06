@@ -185,7 +185,8 @@ def improve_card(conn, cfg: dict, card_id: int, note: str = "",
         body = source_text
         ok, errors_ = val_mod.validate_card(
             merged, body, tools_dir, infographic_strict=False,
-            banner_check=("infographic_spec" in patch))
+            banner_check=("infographic_spec" in patch),
+            mermaid_check=("body_md" in patch))
         if not ok:
             reasons.append(f"attempt {attempt}: " + "; ".join(errors_[:4]))
             continue
