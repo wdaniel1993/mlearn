@@ -21,6 +21,12 @@ MAX_INF_TEXT_CHARS = 200  # per text element (span-wrapped lines inside foreignO
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?%?")
 _MERMAID_FENCE_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.S)
+# Abbreviation gate: ALL-CAPS tokens (>=3 letters) or digit+letters (5G, 4K)
+# must be defined at first use. Two-letter tokens (AI, US, TV) are skipped —
+# they are ambient language; the user's bar is acronyms like QLC/SLC.
+_ABBR_RE = re.compile(r"(?<![A-Za-z0-9])([A-Z]{3,6}|\d[A-Z]{1,3})\b")
+# Logic words that legitimately appear all-caps inside definitions
+_ABBR_WHITELIST = {"AND"}
 _visual_qa = None
 
 
@@ -34,6 +40,29 @@ def _visual_qa_enabled() -> bool:
 def _load_visualqa():
     from . import visualqa as vqa
     return vqa
+
+
+def unexplained_abbrs(*texts: str) -> list[str]:
+    """Collect ALL-CAPS/digit-letter tokens that are never defined by a
+    parenthetical ('QLC (Quad-Level Cell)' or 'Quad-Level Cell (QLC)')."""
+    raw = "\n".join(texts)
+    prose = "\n".join(
+        ln for ln in raw.splitlines()
+        if not ln.strip().startswith("#")            # drop markdown headers
+    )
+    prose = re.sub(r"```.*?```", " ", prose, flags=re.S)   # drop fences
+    prose = re.sub(r"`[^`]*`", " ", prose)                 # drop inline code
+    prose = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", prose)  # link text only
+    abbrs = sorted({m.group(1) for m in _ABBR_RE.finditer(prose)
+                if m.group(1) not in _ABBR_WHITELIST})
+    bad = []
+    for a in abbrs:
+        if re.search(rf"\b{re.escape(a)}\s*\(", prose):
+            continue  # 'QLC (Quad-Level Cell)'
+        if re.search(rf"\(\s*{re.escape(a)}\s*\)", prose):
+            continue  # 'Quad-Level Cell (QLC)'
+        bad.append(a)
+    return bad
 _SVG_TAG_RE = re.compile(r"<script|</script|<iframe", re.I)
 # event handlers and javascript: URLs are banned even inside engine-rendered
 # foreignObject HTML (AntV renders text as HTML spans — legit, but scrubbed)
@@ -288,6 +317,18 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path,
     words = count_words(card.get("body_md", ""))
     if not (MIN_BODY_WORDS <= words <= MAX_BODY_WORDS):
         errors.append(f"body word count {words} outside [{MIN_BODY_WORDS}, {MAX_BODY_WORDS}]")
+
+    bad_abbrs = unexplained_abbrs(
+        card.get("title", ""), card.get("hook", ""),
+        card.get("body_md", ""), card.get("anchor_quote", ""),
+    )
+    if bad_abbrs:
+        errors.append(
+            "abbreviations not explained (C6): "
+            + ", ".join(bad_abbrs[:8])
+            + " — spell each one out at first use, e.g. 'solid-state drive (SSD)' "
+            "or 'Quad-Level Cell (QLC)'"
+        )
 
     prompts = card.get("prompts") or []
     if len(prompts) < MIN_PROMPTS:

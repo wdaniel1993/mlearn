@@ -229,6 +229,46 @@ def test_foreignobject_event_handler_rejected():
     assert not ok and "event handlers" in err
 
 
+def test_unexplained_abbreviations_flagged():
+    from mlearn.validate import unexplained_abbrs
+    bad = unexplained_abbrs(
+        "How an SSD works", "QLC and SLC are cell types",
+        "A NAND chip stores bits in cells.", "TBW matters",
+    )
+    assert "SSD" in bad and "QLC" in bad and "SLC" in bad
+    assert "NAND" in bad and "TBW" in bad
+
+
+def test_explained_abbreviations_pass():
+    from mlearn.validate import unexplained_abbrs
+    bad = unexplained_abbrs(
+        "How an SSD (solid-state drive) works",
+        "QLC (Quad-Level Cell) and SLC (Single-Level Cell) are cell types",
+        "A NAND (Not-AND gate) chip stores bits in cells.",
+        "TBW (terabytes written) matters",
+    )
+    assert bad == []
+
+
+def test_abbr_gate_hits_validate_card(tmp_path):
+    d = _base()
+    d["hook"] = "QLC is denser than SLC."
+    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools",
+                             infographic_strict=False)
+    assert not ok
+    assert any("abbreviation" in e for e in errs)
+
+
+def test_abbr_gate_passes_clean_card(tmp_path):
+    d = _base()
+    d["diagram_src"] = ""
+    d["infographic_svg"] = ANTV_BANNER
+    d["hook"] = "Quad-Level Cell (QLC) packs four bits per cell."
+    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools",
+                             infographic_strict=False)
+    assert ok, errs
+
+
 def test_foreignobject_text_accepted(tmp_path):
     """AntV renders text as foreignObject HTML spans — must pass the gates
     (script/attr bans still apply)."""

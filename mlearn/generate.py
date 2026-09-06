@@ -353,6 +353,15 @@ with YOUR content. If the previous error was about a single color or a
 missing header, this fixes both."""
 
 
+ABBR_FIX_NOTE = """
+
+Abbreviations: every acronym in the Issues list must be spelled out at first
+use in the card text — 'solid-state drive (SSD)', 'Quad-Level Cell (QLC)' —
+or defined in reverse order ('Open Systems Interconnection (OSI)'). Apply to
+title, hook, body and anchor quote; then the token no longer counts as
+unexplained."""
+
+
 def build_system(topic: str) -> str:
     guard = TOPIC_GUARDRAILS.get(topic, "")
     return SYSTEM.replace("{TGUARD}", guard)
@@ -463,9 +472,11 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
                 retry_user = RETRY_USER.format(
                     errors=errors, previous=json.dumps(previous))
                 if any(("accent hue" in e or "spec invalid" in e
-                        or "single-color" in e or "single color" in e)
-                       for e in errors):
+                or "single-color" in e or "single color" in e)
+               for e in errors):
                     retry_user += HUE_FIX_EXAMPLE
+                if any("abbreviation" in e for e in errors):
+                    retry_user += ABBR_FIX_NOTE
                 raw = call_llm(cfg, system, retry_user)
             else:
                 raw = call_llm(cfg, system, user)
@@ -605,6 +616,7 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                     title=card["title"], hook=card["hook"], body_md=card["body_md"],
                     diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
                     infographic_svg=card.get("infographic_svg"),
+                    infographic_spec=str(card.get("infographic_spec") or ""),
                     figures_json=card["figures_json"], source_url=claim["url"],
                     anchor_quote=card["anchor_quote"],
                     embedding=embed_mod.pack(claim["vec"]) if claim["vec"] else None,
