@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS cards (
   body_md       TEXT NOT NULL,   -- ~600-900 words
   diagram_type  TEXT NOT NULL,   -- concept|data
   diagram_src   TEXT NOT NULL,   -- mermaid, parse-validated
+  infographic_svg TEXT,          -- optional self-contained SVG infographic (visual lane)
   figures_json  TEXT,            -- required when diagram_type='data'
   source_url    TEXT NOT NULL,
   anchor_quote  TEXT NOT NULL,   -- verbatim, <= 25 words
@@ -167,10 +168,13 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
-    # idempotent column migration for pre-meta databases
+    # idempotent column migrations for pre-feature databases
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(sources)").fetchall()}
     if "meta" not in cols:
         conn.execute("ALTER TABLE sources ADD COLUMN meta TEXT")
+    ccols = {r["name"] for r in conn.execute("PRAGMA table_info(cards)").fetchall()}
+    if "infographic_svg" not in ccols:
+        conn.execute("ALTER TABLE cards ADD COLUMN infographic_svg TEXT")
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -270,7 +274,8 @@ def insert_item(conn: sqlite3.Connection, *, url: str, title: str | None,
 
 def insert_card(conn: sqlite3.Connection, *, item_id: int | None, cluster_label: str,
                 title: str, hook: str, body_md: str, diagram_type: str, diagram_src: str,
-                figures_json: str | None, source_url: str, anchor_quote: str,
+                infographic_svg: str | None, figures_json: str | None,
+                source_url: str, anchor_quote: str,
                 embedding: bytes | None = None, is_wildcard: bool = False,
                 prompts: list[dict] | None = None) -> int:
     """Insert a card plus its recall prompts. Status starts 'ready'."""
@@ -279,11 +284,12 @@ def insert_card(conn: sqlite3.Connection, *, item_id: int | None, cluster_label:
         raise ValueError(f"unknown cluster label: {cluster_label}")
     cur = conn.execute(
         """INSERT INTO cards (item_id, cluster_id, title, hook, body_md, diagram_type,
-                              diagram_src, figures_json, source_url, anchor_quote,
-                              embedding, status, is_wildcard, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?)""",
+                              diagram_src, infographic_svg, figures_json, source_url,
+                              anchor_quote, embedding, status, is_wildcard, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?)""",
         (item_id, cluster["id"], title, hook, body_md, diagram_type, diagram_src,
-         figures_json, source_url, anchor_quote, embedding, int(is_wildcard), utcnow()),
+         infographic_svg, figures_json, source_url, anchor_quote, embedding,
+         int(is_wildcard), utcnow()),
     )
     assert cur.lastrowid is not None
     card_id = cur.lastrowid

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 # Operator standard (2026-09): short, scannable cards
@@ -12,8 +13,14 @@ MAX_BODY_WORDS = 500
 MAX_ANCHOR_WORDS = 25
 MIN_PROMPTS = 2
 MAX_DIAGRAM_LINES = 10  # simple, very understandable diagrams only (no walls)
+MAX_INF_CHARS = 15_000  # infographic SVG size cap
+MAX_INF_TEXTS = 40      # infographic: text element cap
+MAX_INF_TEXT_CHARS = 100  # infographic: per-<text> cap (no overflow walls)
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?%?")
+_MERMAID_FENCE_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.S)
+_SVG_TAG_RE = re.compile(r"<(script|foreignObject|foreignobject)\b", re.I)
+_EXT_REF_RE = re.compile(r"\bxlink:href\s*=|href\s*=\s*[\"']https?:", re.I)
 
 
 def count_words(text: str) -> int:
@@ -62,6 +69,58 @@ def _numbers_in(text: str) -> list[str]:
     return seen
 
 
+def _localname(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1].lower()
+
+
+def infographic_valid(svg: str) -> tuple[bool, str]:
+    """Visual-lane gate: infographic_svg must be a small, self-contained SVG."""
+    if not svg or not svg.strip():
+        return False, "empty"
+    if len(svg) > MAX_INF_CHARS:
+        return False, f"too large: {len(svg)} chars > {MAX_INF_CHARS}"
+    if _SVG_TAG_RE.search(svg):
+        return False, "script / foreignObject banned"
+    if _EXT_REF_RE.search(svg):
+        return False, "external hrefs banned (must be self-contained)"
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError as e:
+        return False, f"not parseable: {e}"
+    if _localname(root.tag) != "svg":
+        return False, "root must be <svg>"
+    vb = root.get("viewBox")
+    if not vb or len(vb.split()) != 4:
+        return False, "viewBox with 4 numbers required"
+    n_texts = 0
+    for el in root.iter():
+        if _localname(el.tag) == "text":
+            n_texts += 1
+            txt = "".join(el.itertext())
+            if len(txt) > MAX_INF_TEXT_CHARS:
+                return False, f"<text> too long ({len(txt)} chars > {MAX_INF_TEXT_CHARS})"
+    if n_texts == 0:
+        return False, "no <text> elements — an infographic must carry text"
+    if n_texts > MAX_INF_TEXTS:
+        return False, f"{n_texts} <text> elements > {MAX_INF_TEXTS}"
+    return True, ""
+
+
+def infographic_text(svg: str) -> str:
+    """All text content of the infographic (used for the figures gate)."""
+    try:
+        root = ET.fromstring(svg)
+    except ET.ParseError:
+        return ""
+    return "\n".join("".join(el.itertext()) for el in root.iter()
+                     if _localname(el.tag) == "text")
+
+
+def body_mermaid_fences(body_md: str) -> list[str]:
+    """Inline mermaid fences inside body_md (visual budget, optional)."""
+    return [m.group(1).strip() for m in _MERMAID_FENCE_RE.finditer(body_md or "")]
+
+
 def figures_pass(diagram_type: str, diagram_src: str, figures_json: str | None,
                  source_body: str) -> tuple[bool, str]:
     """C4: quantitative diagrams require extracted figures; every figure has
@@ -104,20 +163,40 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path) -> tuple[
         errors.append(f"anchor_quote > {MAX_ANCHOR_WORDS} words (got "
                       f"{anchor_word_count(card['anchor_quote'])})")
 
-    ok, err = mermaid_valid(card.get("diagram_src", ""), tools_dir)
-    if not ok:
-        errors.append(f"mermaid parse failed: {err} (C6)")
+    diagram_src = str(card.get("diagram_src", "") or "")
+    infographic = str(card.get("infographic_svg") or "")
+    fences = body_mermaid_fences(card.get("body_md", ""))
+    hero_lines = [ln for ln in diagram_src.splitlines()
+                  if ln.strip() and not ln.strip().startswith("%%")]
+    if hero_lines:
+        ok, err = mermaid_valid(diagram_src, tools_dir)
+        if not ok:
+            errors.append(f"mermaid parse failed: {err} (C6)")
+        if len(hero_lines) > MAX_DIAGRAM_LINES:
+            errors.append(f"diagram too busy: {len(hero_lines)} lines > {MAX_DIAGRAM_LINES} "
+                          f"(simple, very understandable diagrams only)")
+        figures_visual = diagram_src
+    else:
+        ok, err = infographic_valid(infographic)
+        if not ok:
+            errors.append(f"infographic invalid: {err} (C6)")
+        figures_visual = infographic_text(infographic) if ok else ""
+    if not hero_lines and not infographic.strip() and not fences:
+        errors.append("need at least one visual: diagram_src, infographic_svg, "
+                      "or an inline mermaid fence (C6)")
 
-    src_lines = [ln for ln in str(card.get("diagram_src", "")).splitlines()
-                 if ln.strip() and not ln.strip().startswith("%%")]
-    if len(src_lines) > MAX_DIAGRAM_LINES:
-        errors.append(f"diagram too busy: {len(src_lines)} lines > {MAX_DIAGRAM_LINES} "
-                      f"(simple, very understandable diagrams only)")
-    elif not src_lines:
-        errors.append("diagram_src must be non-empty mermaid (C6)")
+    for i, fence in enumerate(fences):
+        fl = [ln for ln in fence.splitlines()
+              if ln.strip() and not ln.strip().startswith("%%")]
+        if len(fl) > MAX_DIAGRAM_LINES:
+            errors.append(f"inline mermaid fence {i + 1} too busy: {len(fl)} lines "
+                          f"> {MAX_DIAGRAM_LINES}")
+        ok, err = mermaid_valid(fence, tools_dir)
+        if not ok:
+            errors.append(f"inline mermaid fence {i + 1} parse failed: {err} (C6)")
 
     ok, err = figures_pass(
-        card.get("diagram_type", ""), card.get("diagram_src", ""),
+        card.get("diagram_type", ""), figures_visual,
         card.get("figures_json"), source_body,
     )
     if not ok:

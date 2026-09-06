@@ -61,11 +61,29 @@ The JSON must have exactly these keys:
   "hook": "1-2 sentences on why this matters",
   "body_md": "200-500 words, pyramid style, easy language",
   "diagram_type": "concept" or "data",
-  "diagram_src": "one mermaid diagram, parse-valid syntax",
+  "diagram_src": "one mermaid diagram, parse-valid syntax (or empty string)",
+  "infographic_svg": "optional self-contained SVG infographic, or absent",
   "figures": [{"value": <number>, "source": "<verbatim span from the article>"}],
   "anchor_quote": "verbatim span from the article, max 25 words",
   "prompts": [{"question": "...", "answer": "..."}]
 }
+
+VISUAL RULE — one hero visual per card, your choice:
+- Prefer a mermaid diagram (diagram_src) when the card is about a mechanism,
+  structure, flow, taxonomy, or process — the diagram carries the core idea alone.
+- Prefer an infographic (infographic_svg) when the card is about numbers, stat-
+  contrasts, steps, or a comparison that a poster layout serves better. The SVG
+  must be fully self-contained: NO external fonts, NO scripts, NO external images,
+  NO foreignObject. Dark theme (background transparent or #101216), viewBox about
+  800x520, crisp short text in a sans-serif stack, generous padding, a headline,
+  ONE big highlighted number or statistic, 3-4 compact blocks/steps, and a
+  one-line takeaway banner. Text must never overflow its box; keep every <text>
+  under 100 characters; up to ~40 elements total.
+- The remaining visual budget (optional): inline ```mermaid fences inside body_md
+  wherever a small diagram aids a section — as many as you see fit, each small
+  (<= 10 lines).
+- diagram_src may be an empty string when infographic_svg is present. At least one
+  of diagram_src / infographic_svg / an inline mermaid fence must exist.
 
 Hard rules:
 - anchor_quote MUST appear character-for-character in the article text I give you, and be
@@ -415,6 +433,7 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                 conn, item_id=item["id"], cluster_label=topic,
                 title=card["title"], hook=card["hook"], body_md=card["body_md"],
                 diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
+                infographic_svg=card.get("infographic_svg"),
                 figures_json=card["figures_json"], source_url=item["url"],
                 anchor_quote=card["anchor_quote"],
                 embedding=embed_mod.pack(vec) if vec else None,

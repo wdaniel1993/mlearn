@@ -57,6 +57,7 @@ def seed_three(conn):
             conn, item_id=item_id, cluster_label=c["cluster"],
             title=c["title"], hook=c["hook"], body_md=c["body_md"],
             diagram_type=c["diagram_type"], diagram_src=c["diagram_src"],
+            infographic_svg=None,
             figures_json=json.dumps(c.get("figures") or []),
             source_url=c["source_url"], anchor_quote=c["anchor_quote"],
             prompts=c["prompts"],

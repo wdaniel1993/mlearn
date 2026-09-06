@@ -303,6 +303,7 @@ def _payload(conn, card_row, kind: str, prompts) -> dict:
         "body_md": card_row["body_md"],
         "diagram_type": card_row["diagram_type"],
         "diagram_src": card_row["diagram_src"],
+        "infographic_svg": card_row["infographic_svg"],
         "source_url": card_row["source_url"],
         "anchor_quote": card_row["anchor_quote"],
         "prompts": [{"prompt_id": p["id"], "question": p["question"],
