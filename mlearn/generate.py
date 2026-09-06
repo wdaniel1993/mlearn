@@ -62,7 +62,7 @@ The JSON must have exactly these keys:
   "hook": "1-2 sentences on why this matters",
   "body_md": "200-500 words, pyramid style, easy language",
   "diagram_type": "concept" or "data",
-  "diagram_src": "one mermaid diagram, parse-valid syntax (or empty string)",
+  "diagram_src": "always empty string — mermaid lives ONLY inline in body_md",
   "infographic_spec": "optional AntV infographic spec (preferred infographic lane)",
   "infographic_svg": "optional hand-written SVG infographic (fallback lane only)",
   "figures": [{"value": <number>, "source": "<verbatim span from the article>"}],
@@ -70,26 +70,26 @@ The JSON must have exactly these keys:
   "prompts": [{"question": "...", "answer": "..."}]
 }
 
-VISUAL RULE — one hero visual per card:
-- STRONG PREFERENCE: the main image is an INFOGRAPHIC via infographic_spec —
-  an AntV declarative spec, rendered as a wide banner by the engine. AntV
-  templates ship icons, illustrations and graphs that make the card feel
-  alive; use them for almost everything: stats, steps, comparisons, levels,
-  hierarchies, lists of facts.
-- Use a mermaid diagram (diagram_src) ONLY when the content is a branching
-  flow or decision logic the spec templates cannot express (conditionals,
-  loops, state machines) — otherwise the infographic wins.
-  Choose the TEMPLATE to match the content's structure (AntV design guide):
-    list-grid-simple / list-column-done-list / list-grid-badge-card — modular
-      lists, pyramids, levels (list-column-* and list-grid-* SCALE to 8+ items)
-    sequence-steps-badge-card / sequence-timeline-plain-text — flows, steps, timelines
-    compare-binary-horizontal-simple-fold / compare-swot — contrasts, pros/cons
-    chart-column-simple / chart-bar-plain-text — plain quantitative comparison
-    relation-network-simple-circle-node — hub or intersecting relations
-    NOTE list-pyramid-* renders at most 6 items by design. When the content
-    has more than 6 named items (e.g. the 7 OSI layers), use list-column-* or
-    list-grid-* — NEVER drop items to fit. Truncation is detected and fails
-    the attempt if the template can't hold all items.
+VISUAL RULE — exactly ONE main image per card:
+- The main image is ALWAYS the infographic: infographic_spec (AntV engine
+  banner — preferred) or, as fallback, hand-written infographic_svg. There is
+  no other main image; diagram_src must be an empty string.
+- Mermaid diagrams: ZERO TO MANY, ONLY as inline ```mermaid fences embedded in
+  body_md (each parse-valid, <= 10 lines). NEVER as a standalone main image.
+  Choose the TEMPLATE TYPE to match the content — never default to text boxes:
+    - REAL GRAPHS for numbers & trends: chart-column-simple, chart-bar-plain-text,
+      chart-line-plain-text (lists: label = axis/series name, value = <number>)
+    - SHARES & proportions: relation-circle-circular-progress (lists: label,
+      desc; labels like '92%')
+    - CONTRASTS / pros-cons: compare-swot, compare-binary-horizontal-simple-fold
+    - STEPS / timelines: sequence-steps-badge-card, sequence-timeline-plain-text
+    - LEVELS / pyramids: list-pyramid-badge-card (max 6 items — for more use
+      list-column-done-list / list-grid-badge-card, they SCALE to 8+)
+    - HUBS / relations: relation-network-simple-circle-node
+    - Plain enumerations ONLY as a last resort: list-grid-simple
+  NOTE: prefer templates with real graphics (charts, rings, icons, illustrations)
+  over plain text boxes; list-pyramid-* renders at most 6 items by design and
+  truncation is detected — NEVER drop items to fit.
   DATA best practices (AntV infographic-design guide):
     - ONE message per item. Label = the headline fact (a number or 1-3 words);
       desc = the plain explanation. NEVER repeat the label's numbers in desc.
@@ -98,7 +98,15 @@ VISUAL RULE — one hero visual per card:
     - 3-8 items, short title, terse text everywhere (banner space is tight).
       More items than 6? Use list-column-* or list-grid-*; never drop content.
     - Neutral factual tone: no metaphors, emotions, or cultural references.
-  Valid example:
+  Valid examples:
+    infographic chart-column-simple
+    data
+      title Yields by year
+      lists
+        - label 2020
+          value 12.5
+        - label 2021
+          value 20
     infographic list-grid-simple
     data
       title Match the market, don't beat it
