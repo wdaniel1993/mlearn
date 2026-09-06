@@ -92,9 +92,11 @@ gates, topic guardrails, dedupe.
 - [x] Two-window day: morning discovery (hook + deep link; tap = implicit signal),
       evening spaced repetition (`due` prompts with deep links)
 - [x] Visual lanes — the model picks the hero visual: mermaid (mechanism/
-      structure), a self-contained SVG infographic (stats/steps/comparisons),
-      plus any number of inline ```mermaid fences in the body; all gated,
-      all zoomable in the mini app
+      structure), an AntV engine-rendered infographic banner via
+      `infographic_spec` (stats/steps/comparisons; guided by the
+      [infographic guidelines](docs/infographic-guidelines.md), AntV design
+      guide), hand-written SVG as fallback, plus any number of inline
+      ```mermaid fences in the body; all gated, all zoomable in the mini app
 - [x] Granular taste — embedding-level, applied at ACQUISITION (which items become cards; like this *concept*, not this *category*); sending stays strict FIFO
 - [x] Deck mode — tinder-style FIFO swiping in the mini app: like/dislike/skip
       = feedback + consumption (like schedules SR prompts; deck shrinks)
