@@ -75,8 +75,22 @@ VISUAL RULE — one hero visual per card, your choice:
   structure, flow, taxonomy, or process — the diagram carries the core idea alone.
 - For numbers, stat-contrasts, steps, or comparisons, prefer an INFOGRAPHIC via
   infographic_spec — an AntV declarative spec (rendered as a wide banner by the
-  engine; tight layout guaranteed). Use the template 'list-grid-simple' unless
-  you know another; valid example:
+  engine; tight layout guaranteed). Choose the TEMPLATE to match the content's
+  structure (AntV design guide):
+    list-grid-simple / list-column-done-list / list-pyramid-badge-card — modular
+      lists, pyramids, levels
+    sequence-steps-badge-card / sequence-timeline-plain-text — flows, steps, timelines
+    compare-binary-horizontal-simple-fold / compare-swot — contrasts, pros/cons
+    chart-column-simple / chart-bar-plain-text — plain quantitative comparison
+    relation-network-simple-circle-node — hub or intersecting relations
+  DATA best practices (AntV infographic-design guide):
+    - ONE message per item. Label = the headline fact (a number or 1-3 words);
+      desc = the plain explanation. NEVER repeat the label's numbers in desc.
+    - Hero statistic FIRST (visual hierarchy), then supporting items.
+    - Parallel phrasing across same-level items ('92% of…', '~28% of…').
+    - 3-6 items, short title, terse text everywhere (banner space is tight).
+    - Neutral factual tone: no metaphors, emotions, or cultural references.
+  Valid example:
     infographic list-grid-simple
     data
       title Match the market, don't beat it
