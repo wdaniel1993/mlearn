@@ -13,13 +13,17 @@ GOOD_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520">'
             '<text x="40" y="60" fill="#eee" font-size="30">Index funds beat most pros</text>'
             '<text x="40" y="140" fill="#f6b93b" font-size="64">92%</text>'
             '<text x="40" y="200" fill="#ccc" font-size="24">of active funds underperform</text>'
+            '<text x="40" y="380" fill="#ddd" font-size="20">1. Choose · 2. Buy · 3. Hold</text>'
+            '<text x="40" y="460" fill="#9fdcb8" font-size="22">Takeaway: match the market, cheaply.</text>'
             '</svg>')
 
 BAD_SCRIPT_SVG = GOOD_SVG.replace(
     '</svg>', '<script>alert(1)</script></svg>')
 
 TOO_LONG_TEXT = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520">'
-                 '<text x="10" y="20">' + ("x" * 400) + '</text></svg>')
+                 '<rect width="800" height="520" fill="#101216"/>'
+                 '<text x="10" y="120">' + ("x" * 400) + '</text>'
+                 '<text x="10" y="460">Takeaway fills the canvas.</text></svg>')
 
 SOURCE_BODY = ("the quick brown fox jumps over the lazy dog — " * 6)
 
@@ -88,6 +92,39 @@ def test_body_mermaid_fences_extracts_blocks():
     assert len(fences) == 2
     assert "A-->B" in fences[0]
     assert body_mermaid_fences("no fences here") == []
+
+
+def test_no_background_rect_rejected(tmp_path):
+    """Canvas-fill gate: without a full-bleed background the poster gets
+    white bands (the 'lots of white space below' failure mode)."""
+    d = _base()
+    d["diagram_src"] = ""
+    d["infographic_svg"] = GOOD_SVG
+    svg = d["infographic_svg"].replace(
+        '<rect x="10" y="10" width="780" height="500" fill="#101216"/>',
+        '<circle cx="400" cy="200" r="100" fill="#101216"/>')
+    d["infographic_svg"] = svg
+    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools")
+    assert not ok
+    assert any("canvas not filled" in e for e in errs)
+
+
+def test_short_content_rejected(tmp_path):
+    """Fill-height gate: content that stops above ~78% of the canvas fails."""
+    d = _base()
+    d["diagram_src"] = ""
+    d["infographic_svg"] = GOOD_SVG
+    svg = d["infographic_svg"].replace('y="380"', 'y="300"').replace('y="460"', 'y="300"')
+    d["infographic_svg"] = svg
+    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools")
+    assert not ok, errs
+    assert any("must fill the canvas" in e for e in errs)
+
+
+def test_num_none_is_zero():
+    from mlearn.validate import _num
+    assert _num(None) == 0.0
+    assert _num("42") == 42.0
 
 
 def test_no_visual_is_rejected(tmp_path):
