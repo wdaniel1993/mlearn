@@ -47,7 +47,7 @@ def test_banner_garbage_rejected():
 def test_banner_dangling_icon_refs_rejected():
     ok, msg = vqa.qa_banner_svg(
         '<svg viewBox="0 0 100 100"><text>Alpha</text><text>Beta</text>'
-        '<use href="#rsc-123" /></svg>')
+        '<use href="#rsc-123" />' + "<!-- pad -->" * 60 + "</svg>")
     assert not ok and "dangling" in msg
     big = ('<svg viewBox="0 0 400 400">'
            '<text>Alpha</text><text>Beta</text>'
