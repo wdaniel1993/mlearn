@@ -69,6 +69,16 @@ def _numbers_in(text: str) -> list[str]:
     return seen
 
 
+def _num(val) -> float:
+    """SVG numeric attr: missing -> 0 (per SVG spec); unparseable -> NaN (gates fail clean)."""
+    if val is None:
+        return 0.0
+    try:
+        return float(val)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
 def _localname(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
@@ -92,6 +102,31 @@ def infographic_valid(svg: str) -> tuple[bool, str]:
     vb = root.get("viewBox")
     if not vb or len(vb.split()) != 4:
         return False, "viewBox with 4 numbers required"
+    try:
+        vb_w, vb_h = (float(v) for v in vb.split()[-2:])  # viewBox = minx miny WIDTH HEIGHT
+    except ValueError:
+        return False, "viewBox must be numeric"
+    # Canvas-fill gate: a near-full-bleed background rect must cover the canvas
+    # (kills the 'big empty band below the poster' failure mode)
+    covered = any(
+        _localname(el.tag) == "rect"
+        and _num(el.get("x")) <= 0.02 * vb_w
+        and _num(el.get("y")) <= 0.02 * vb_h
+        and _num(el.get("x")) + _num(el.get("width")) >= 0.98 * vb_w
+        and _num(el.get("y")) + _num(el.get("height")) >= 0.98 * vb_h
+        for el in root.iter()
+    )
+    if not covered:
+        return False, "canvas not filled: need a full-bleed background rect"
+    # Fill-height gate: the lowest text baseline must reach ~80% of canvas height
+    # (kills the 'big empty band under the poster' failure mode)
+    max_y = max(
+        (_num(el.get("y")) for el in root.iter() if _localname(el.tag) == "text"),
+        default=0.0,
+    )
+    if max_y < 0.60 * vb_h:
+        return False, (f"text stops at y={max_y:.0f} (< 60% of {vb_h:.0f} canvas height)"
+                       f" — content must fill the canvas")
     n_texts = 0
     for el in root.iter():
         if _localname(el.tag) == "text":
