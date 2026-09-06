@@ -378,7 +378,7 @@ def call_llm(cfg: dict, system: str, user: str) -> str | None:
         payload["reasoning_effort"] = effort
         payload["reasoning"] = {"effort": effort}
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-    with httpx.Client(timeout=360) as client:
+    with httpx.Client(timeout=600) as client:
         r = client.post(url, headers=headers, json=payload)
         r.raise_for_status()
         data = r.json()
