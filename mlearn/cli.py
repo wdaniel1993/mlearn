@@ -150,6 +150,9 @@ def generate(count: int = typer.Option(12, "--count", min=1,
                                                 help="fetch new items first"),
              regenerate: bool = typer.Option(False, "--regenerate",
                                              help="archive ready pool and re-roll it"),
+             workers: int = typer.Option(1, "--workers", envvar="MLEARN_WORKERS",
+                                         min=1, max=8,
+                                         help="parallel LLM workers (endpoint serves ~3x concurrently)"),
              json_out: bool = typer.Option(False, "--json")):
     """Discovery pipeline: harvest -> dedupe -> generate -> validate -> enqueue.
     Phase 2 allocation: round-robin over seed topics (bandit arrives in Phase 4)."""
@@ -158,7 +161,8 @@ def generate(count: int = typer.Option(12, "--count", min=1,
     db_mod.init_db(conn)
     result = generate_mod.run_generation(conn, cfg, count,
                                          do_harvest=harvest_items,
-                                         regenerate=regenerate)
+                                         regenerate=regenerate,
+                                         workers=workers)
     if json_out:
         _json_out(result)
     else:
