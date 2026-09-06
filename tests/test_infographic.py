@@ -116,7 +116,13 @@ def test_truncation_detector():
         f"infographic list-pyramid-badge-card\ndata\n  title Seven\n  lists\n{items7}", tools)
     assert svg is None and "dropped items" in err and "L7" in err
     svg, err = render_spec(
-        f"infographic list-column-done-list\ndata\n  title Seven\n  lists\n{items7}", tools)
+        f"infographic list-column-done-list\n"
+        f"data\n  title Seven\n  lists\n"
+        f"    - label L1\n      icon star fill\n    - label L2\n      icon star fill\n"
+        f"    - label L3\n      icon star fill\n    - label L4\n      icon star fill\n"
+        f"    - label L5\n      icon star fill\n    - label L6\n      icon star fill\n"
+        f"    - label L7\n      icon star fill\n"
+        f"theme\n  palette #22d3ee #22c55e #f59e0b\n", tools)
     assert svg is not None and err == ""
 
 
@@ -145,8 +151,33 @@ def test_compare_binary_labels_dropped_rejected():
         "    - label Index fund\n      children\n"
         "        - label 0.05% fee\n          icon banknote\n"
         "    - label Active fund\n      children\n"
-        "        - label 92% underperform\n          icon arrow down\n", tools)
+        "        - label 92% underperform\n          icon arrow down\n"
+        "theme\n  palette #22c55e #f97316\n", tools)
     assert svg is not None and err == ""
+
+
+def test_liveliness_gate():
+    """A banner that renders but shows only white/one-color text boxes is a
+    placeholder: missing icons and missing palettes must fail with
+    actionable feedback so the retry loop enriches the spec."""
+    import shutil
+    from pathlib import Path
+    if shutil.which("node") is None:
+        import pytest
+        pytest.skip("node not available")
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    from mlearn.infographic import render_spec
+    sparse = ("infographic list-grid-badge-card\n"
+              "data\n  title Facts\n  lists\n"
+              "    - label 92%\n      desc underperform\n"
+              "    - label 28%\n      desc eaten by fees\n")
+    svg, err = render_spec(sparse, tools)
+    assert svg is None and "lacks icons" in err
+    no_pal = ("infographic chart-column-simple\n"
+              "data\n  title Yield\n  values\n"
+              "    - label 2020\n      value 12.5\n    - label 2021\n      value 20\n")
+    svg, err = render_spec(no_pal, tools)
+    assert svg is None and "lacks a palette" in err
 
 
 def test_palette_luminance_gate():
@@ -205,8 +236,12 @@ def test_apply_infographic_lane_renders_spec(tmp_path):
         pytest.skip("node not available")
     from mlearn.generate import apply_infographic_lane
     tools = Path(__file__).resolve().parents[1] / "tools"
-    spec = ("infographic list-grid-simple\ndata\n  title Stats\n  lists\n"
-            "    - label 92%\n      desc of funds underperforming the index\n")
+    spec = ("infographic list-grid-badge-card\ndata\n  title Stats\n  lists\n"
+            "    - label 92%\n      desc of funds underperforming the index\n"
+            "      icon chart line\n"
+            "    - label 28%\n      desc eaten by a small fee\n"
+            "      icon arrow up\n"
+            "theme\n  palette #22d3ee #22c55e\n")
     card = {"diagram_src": "", "infographic_spec": spec}
     errs = apply_infographic_lane(card, tools)
     assert errs == [] and card.get("_infographic_lane") == "antv"

@@ -8,6 +8,7 @@ we only gate the rendered result like any other infographic.
 
 import re
 import subprocess
+import time
 from pathlib import Path
 
 SPEC_RE = re.compile(r"^\s*infographic\s+[a-zA-Z0-9][a-zA-Z0-9-]*\s*$", re.M)
@@ -55,6 +56,7 @@ def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
         return None, f"render failed: {proc.stderr.strip()[:200]}"
     svg = proc.stdout.strip()
     if not svg.startswith("<svg"):
+        log_failure(spec, "renderer produced no svg")
         return None, "renderer produced no svg"
     trunc = _check_truncation(spec, svg)
     if trunc:
@@ -62,7 +64,53 @@ def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
     dark = _check_palette(spec)
     if dark:
         return None, dark
+    alive = _check_liveliness(spec, svg)
+    if alive:
+        return None, alive
     return svg, ""
+
+
+_ACCENT_GRAY = {"#ffffff", "#000000", "#1f1f1f", "#0f1216", "#101216"}
+
+
+def _check_liveliness(spec: str, svg: str) -> str | None:
+    """The 'alive' gate: banners must carry icons and a palette, and the
+    RENDER must show at least two accent colors beyond white/gray. A spec
+    that passes render but shows only white text boxes reads as a
+    placeholder — fail it and the retry loop feeds the fix back."""
+    first = spec.strip().splitlines()[0]
+    fam = first.split()[1] if len(first.split()) > 1 else ""
+    needs_icons = fam.startswith(("list-", "sequence-", "compare-", "hierarchy-"))
+    if needs_icons and len(re.findall(r"^\s+icon\s+\S", spec, re.M)) < 2:
+        return ("banner lacks icons: semantic keyword items (lists/sequences/"
+                "compares/hierarchy) must carry 'icon <keywords>' on at least"
+                " 2 items — e.g. icon rocket launch, icon shield check")
+    if not re.search(r"^\s*palette\s+", spec, re.M):
+        return ("banner lacks a palette: add 'theme' 'palette' with 2-5 "
+                "BRIGHT colors (single-color banners read as placeholders), "
+                "e.g. #22d3ee #22c55e #f59e0b #f97316")
+    fills = set(re.findall(r'(?:fill|stop-color)="#([0-9a-fA-F]{6})"', svg))
+    accents = {f for f in fills
+               if f.lower() not in _ACCENT_GRAY
+               and not (f[1:3] == f[3:5] == f[5:7])}
+    if len(accents) < 2:
+        return (f"render shows only {len(accents)} accent color(s) — the "
+                "template renders the palette too thinly; pick a template "
+                "with real color blocks (chart, quadrant, funnel, waterfall)"
+                " or restyle with stylize linear-gradient")
+    return None
+
+
+def log_failure(spec: str, err: str) -> None:
+    """Persist a failing spec so renderer crashes are reproducible instead
+    of vanishing into the retry loop."""
+    try:
+        path = Path(__file__).resolve().parents[1] / "data" / "logs" / "render_failures.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a") as f:
+            f.write(f"\n===== {time.strftime('%Y-%m-%d %H:%M:%S')} | {err[:300]}\n{spec}\n")
+    except OSError:
+        pass
 
 
 def _check_palette(spec: str) -> str | None:

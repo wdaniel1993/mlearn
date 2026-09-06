@@ -191,6 +191,8 @@ AntV spec syntax (official AntV Infographic skill):
         ask - DNS + TCP -> lookup
         lookup - HTML + CSS -> stream
         stream - bytes -> paint
+    theme
+      palette #22d3ee #22c55e #f59e0b
   Keep labels ultra-short and desc under 25 words. If spec render fails it is
   fed back to you — then fix the shape or fall back to infographic_svg.
 - infographic_svg is the FALLBACK lane (only when a spec is not practical):
