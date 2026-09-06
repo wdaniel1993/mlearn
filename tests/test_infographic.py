@@ -98,6 +98,10 @@ ANTV_BANNER = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 688 145">'
                '<g transform="translate(0, 60)">'
                '<foreignObject width="200" height="30" y="0" x="0">'
                '<span>92% of funds underperform the market</span>'
+               '</foreignObject></g>'
+               '<g transform="translate(0, 20)">'
+               '<foreignObject width="200" height="30" y="0" x="0">'
+               '<span>Index funds track the market</span>'
                '</foreignObject></g></svg>')
 
 

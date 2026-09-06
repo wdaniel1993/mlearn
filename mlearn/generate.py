@@ -438,6 +438,11 @@ def apply_infographic_lane(card: dict, tools_dir: str | Path) -> list[str]:
     svg, rerr = infographic_mod.render_spec(str(spec), tools_dir)
     if svg is None:
         return [f"infographic spec render failed: {rerr}"]
+    if os.environ.get("MLEARN_VISUAL_QA", "1").lower() not in ("0", "false", "no", "off"):
+        from . import visualqa as vqa_mod
+        ok, verr = vqa_mod.qa_banner_svg(svg)
+        if not ok:
+            return [f"infographic visual QA: {verr}"]
     card["infographic_svg"] = svg
     card["_infographic_lane"] = "antv"
     return []
