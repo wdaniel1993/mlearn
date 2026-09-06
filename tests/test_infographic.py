@@ -209,7 +209,16 @@ def test_no_visual_is_rejected(tmp_path):
     d["infographic_svg"] = None
     ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools")
     assert not ok
-    assert any("at least one visual" in e for e in errs)
+    assert any("no main image" in e for e in errs)
+
+
+def test_hero_mermaid_rejected(tmp_path):
+    """The main image is ONE infographic; mermaid only as inline fences."""
+    d = _base()
+    d["diagram_src"] = "flowchart TD\n  A[Loop] --> B{Hoist?}\n  B -->|yes| C[Above]"
+    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools")
+    assert not ok
+    assert any("no hero mermaid" in e for e in errs)
 
 
 def test_infographic_lane_passes_gates(tmp_path):

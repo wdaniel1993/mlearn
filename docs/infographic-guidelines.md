@@ -4,28 +4,27 @@ Source: AntV Infographic design guide — https://infographic.antv.vision/learn/
 (distilled; the model-facing contract lives in `mlearn/generate.py` VISUAL RULE).
 
 ## Lane model
-- STRONG PREFERENCE: `infographic_spec` (AntV engine, wide banner) for the
-  main image — AntV templates ship icons, illustrations and graphs that make
-  the card feel alive. The engine owns layout, typography, spacing,
-  alignment — templates implement the guide's specs (4px grid, 24/16/18/14
-  type scale, ≤2 alignments, item spacing 16–24px, 60% graphic / 40% text).
-- Mermaid (`diagram_src`) only for branching flows / decision logic the spec
-  templates cannot express (conditionals, loops, state machines).
-- `infographic_svg` (raw hand-written poster) stays as the fallback lane.
-- Inline ```mermaid fences in the body are always allowed as extras.
+- Exactly ONE main image per card: the infographic — `infographic_spec`
+  (AntV engine banner, preferred) or hand-written `infographic_svg` fallback.
+  The engine owns layout, typography, spacing, alignment — templates
+  implement the guide's specs (4px grid, 24/16/18/14 type scale, ≤2
+  alignments, item spacing 16–24px, 60% graphic / 40% text).
+- Mermaid: ZERO TO MANY, ONLY as inline ```mermaid fences embedded in body_md
+  (never a standalone main image; `diagram_src` is always empty).
+- Inline mermaid fences in the body are always allowed as extras.
 
 ## Template choice (spec lane)
-Match the template family to the content structure:
-- `list-*` (list-grid-simple, list-column-done-list, list-pyramid-badge-card)
-  — modular lists, pyramids, levels, "the N things"
-- `sequence-*` (sequence-steps-badge-card, sequence-timeline-plain-text)
-  — flows, steps, timelines (path-oriented layouts)
-- `compare-*` (compare-swot, compare-binary-horizontal-simple-fold)
-  — contrasts, pros/cons (symmetrical balance)
-- `chart-*` (chart-column-simple, chart-bar-plain-text)
-  — plain quantitative comparison
-- `relation-*` (relation-network-simple-circle-node)
-  — hub, intersecting relations (radial layout)
+Choose the template TYPE by what the content IS — never default to text boxes:
+- REAL GRAPHS for numbers & trends: `chart-column-simple`, `chart-bar-plain-text`,
+  `chart-line-plain-text` (data shape: `label` = axis/series name, `value` = number)
+- SHARES & proportions: `relation-circle-circular-progress` (labels like `92%`)
+- CONTRASTS / pros-cons: `compare-swot`, `compare-binary-horizontal-simple-fold`
+- STEPS / timelines: `sequence-steps-badge-card`, `sequence-timeline-plain-text`
+- LEVELS / pyramids: `list-pyramid-badge-card` (6-item cap — for more use
+  `list-column-done-list` / `list-grid-badge-card`, which scale to 8+)
+- HUBS / relations: `relation-network-simple-circle-node`
+- Plain enumerations ONLY as last resort: `list-grid-simple`
+Prefer real graphics (charts, rings, icons, illustrations) over text boxes;
 
 ## Data discipline (model-controlled)
 1. ONE message per item. Label = headline fact (number or 1–3 words);

@@ -224,24 +224,25 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path,
     diagram_src = str(card.get("diagram_src", "") or "")
     infographic = str(card.get("infographic_svg") or "")
     fences = body_mermaid_fences(card.get("body_md", ""))
+
+    # Main image = ONE infographic (spec-rendered banner or raw-SVG fallback).
+    # Mermaid exists ONLY as inline fences embedded in the body (zero to many).
     hero_lines = [ln for ln in diagram_src.splitlines()
                   if ln.strip() and not ln.strip().startswith("%%")]
     if hero_lines:
-        ok, err = mermaid_valid(diagram_src, tools_dir)
-        if not ok:
-            errors.append(f"mermaid parse failed: {err} (C6)")
-        if len(hero_lines) > MAX_DIAGRAM_LINES:
-            errors.append(f"diagram too busy: {len(hero_lines)} lines > {MAX_DIAGRAM_LINES} "
-                          f"(simple, very understandable diagrams only)")
-        figures_visual = diagram_src
+        errors.append("no hero mermaid (C6): the main image is ONE infographic; "
+                      "mermaid only as inline ```mermaid fences in body_md — "
+                      "set diagram_src to empty string")
+        figures_visual = ""
     else:
         ok, err = infographic_valid(infographic, infographic_strict)
         if not ok:
             errors.append(f"infographic invalid: {err} (C6)")
         figures_visual = infographic_text(infographic) if ok else ""
-    if not hero_lines and not infographic.strip() and not fences:
-        errors.append("need at least one visual: diagram_src, infographic_svg, "
-                      "or an inline mermaid fence (C6)")
+    if not infographic.strip():
+        errors.append("no main image (C6): the card needs an infographic "
+                      "(infographic_spec rendered banner, or the raw "
+                      "infographic_svg fallback)")
 
     for i, fence in enumerate(fences):
         fl = [ln for ln in fence.splitlines()

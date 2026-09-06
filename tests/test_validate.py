@@ -7,6 +7,12 @@ TOOLS = __import__("pathlib").Path(__file__).resolve().parent.parent / "tools"
 GOOD_MERMAID = "flowchart TD\n  A[Loop] --> B{Hoist?}\n  B -->|yes| C[Above]\n"
 BAD_MERMAID = "flowchart TD\n  A -->\n"
 
+# minimal valid infographic for the figures gates (main-image contract)
+GOOD_INF = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520">'
+            '<rect x="0" y="0" width="800" height="520" fill="#101216"/>'
+            '<text x="40" y="60" fill="#fff">Headline</text>'
+            '<text x="40" y="460" fill="#fff">takeaway line at the bottom</text></svg>')
+
 BODY = ("lorem ipsum dolor sit amet " * 60)  # 360 words, within the 200-500 band
 LONG_BODY = "word " * 1101  # > 500: used for over-limit checks
 
@@ -14,7 +20,8 @@ LONG_BODY = "word " * 1101  # > 500: used for over-limit checks
 def base_card(**over):
     card = {
         "title": "t", "hook": "h", "body_md": "word " * 350,
-        "diagram_type": "concept", "diagram_src": GOOD_MERMAID,
+        "diagram_type": "concept", "diagram_src": "",
+        "infographic_svg": GOOD_INF,
         "figures_json": None, "anchor_quote": "the quick brown fox",
         "prompts": [
             {"question": "What is the mechanism?", "answer": "A sufficiently long answer "
@@ -61,7 +68,7 @@ def test_long_anchor_rejected():
 def test_bad_mermaid_rejected():
     ok, errors = validate_card(base_card(diagram_src=BAD_MERMAID), BODY, TOOLS)
     assert not ok
-    assert any("mermaid parse failed" in e for e in errors)
+    assert any("no hero mermaid" in e for e in errors)
 
 
 def test_word_count_bounds():
@@ -98,15 +105,18 @@ def test_data_diagram_requires_figures():
 
 def test_data_diagram_number_must_be_sourced():
     source = "the quick brown fox. the yield in year 1 was 12.5 percent in that year"
+    inf_numbers = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520">'
+                   '<rect x="0" y="0" width="800" height="520" fill="#101216"/>'
+                   '<text x="40" y="60" fill="#fff">the yield rose to 12.5 percent</text>'
+                   '<text x="40" y="460" fill="#fff">and peaked at 99.9 percent</text></svg>')
     card = base_card(
         diagram_type="data",
-        diagram_src='xychart-beta\n  x-axis [1, 2]\n  y-axis "Yield"\n  bar [12.5, 99.9]',
+        infographic_svg=inf_numbers,
         figures_json='[{"value": 12.5, "source": "the yield was 12.5 percent"}]',
     )
     ok, errors = validate_card(card, source, TOOLS)
     assert not ok
     assert any("99.9" in e for e in errors), errors
-    assert any("'1'" in e for e in errors), errors
 
 
 def test_figure_span_must_be_verbatim():
@@ -127,9 +137,13 @@ def test_figure_span_must_be_verbatim():
 def test_figures_pass_on_valid_data_diagram():
     source = ("the quick brown fox. the yield in year 1 was 12.5 percent and "
               "in year 2 it reached 20 percent the next")
+    inf_pass = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 520">'
+                '<rect x="0" y="0" width="800" height="520" fill="#101216"/>'
+                '<text x="40" y="60" fill="#fff">in year 1 the yield was 12.5 percent</text>'
+                '<text x="40" y="460" fill="#fff">in year 2 it reached 20 percent</text></svg>')
     card = base_card(
         diagram_type="data",
-        diagram_src='xychart-beta\n  title "Yield"\n  x-axis [1, 2]\n  y-axis "Yield"\n  bar [12.5, 20]',
+        infographic_svg=inf_pass,
         figures_json=json_dumps([
             {"value": 1, "source": "year 1"},
             {"value": 2, "source": "year 2"},
