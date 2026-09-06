@@ -370,6 +370,18 @@ def build_system(topic: str) -> str:
 def call_llm(cfg: dict, system: str, user: str) -> str | None:
     gen = cfg["generate"]
     key = os.environ.get(gen.get("api_key_env", "OPENROUTER_API_KEY"), "")
+    if not key:
+        # fallback: the Mac Mini automation .env (scripts export this var;
+        # interactive use should not depend on the shell)
+        env_name = gen.get("api_key_env", "OPENROUTER_API_KEY")
+        try:
+            env_path = Path(os.path.expanduser("~/.hermes/.env"))
+            for line in env_path.read_text().splitlines():
+                if line.startswith(env_name + "="):
+                    key = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+        except Exception:
+            pass
     url = gen["base_url"].rstrip("/") + "/chat/completions"
     payload = {
         "model": gen["model"],
