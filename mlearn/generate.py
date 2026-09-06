@@ -385,7 +385,14 @@ def apply_infographic_lane(card: dict, tools_dir: str | Path) -> list[str]:
     spec = card.get("infographic_spec")
     if not spec or not str(spec).strip():
         return []
-    ok, err = infographic_mod.spec_valid(str(spec))
+    spec = str(spec)
+    ok, err = infographic_mod.spec_valid(spec)
+    if not ok:
+        saved = infographic_mod.salvage_spec(spec)
+        if saved is not None:
+            spec = saved
+            card["infographic_spec"] = saved
+            ok, err = True, ""
     if not ok:
         return [f"infographic spec invalid: {err}"]
     svg, rerr = infographic_mod.render_spec(str(spec), tools_dir)
