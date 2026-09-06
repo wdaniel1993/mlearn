@@ -144,6 +144,8 @@ def test_apply_infographic_lane_renders_spec(tmp_path):
     errs = apply_infographic_lane(card, tools)
     assert errs == [] and card.get("_infographic_lane") == "antv"
     assert card["infographic_svg"].startswith("<svg")
+    assert "#262626" not in card["infographic_svg"], "light-theme text leaked"
+    assert "#fff" in card["infographic_svg"], "dark theme text missing"
     from mlearn.validate import infographic_valid
     ok, err = infographic_valid(card["infographic_svg"], strict_layout=False)
     assert ok, err
