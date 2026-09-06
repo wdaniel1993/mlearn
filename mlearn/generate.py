@@ -52,6 +52,29 @@ TOPIC_GUARDRAILS = {
     ),
 }
 
+_USED_TEMPLATES: list[str] = []
+
+
+def _template_of(card: dict) -> str | None:
+    spec = str(card.get("infographic_spec") or "").strip()
+    if not spec:
+        return None
+    parts = spec.splitlines()[0].split()
+    return parts[1] if len(parts) > 1 else None
+
+
+def _variety_note() -> str:
+    if not _USED_TEMPLATES:
+        return ""
+    recent = ", ".join(_USED_TEMPLATES[-6:])
+    return ("\n\nDeck template variety (IMPORTANT): the most recent cards in this "
+            "deck used these templates: " + recent + ". Choose a DIFFERENT "
+            "template type unless the content truly demands the same one. "
+            "The deck shows ONE banner per card — template monotony reads as "
+            "automation, so vary the visual type even when a similar template "
+            "would also fit.")
+
+
 SYSTEM = """You are the content engine of a personal microlearning system. You transform one
 source article into exactly one visual 5-minute learning card. Respond with STRICT JSON
 only — no prose, no markdown fences, no commentary.
@@ -100,13 +123,19 @@ AntV spec syntax (official AntV Infographic skill):
                   palettes are rejected). Bright examples: #22d3ee #22c55e
                   #10b981 #f59e0b #f97316 #eab308 #a78bfa #f8fafc
       stylize  -> linear-gradient or radial-gradient only
+      NEVER theme.base, font-family or custom fonts (SSR cannot register
+      them — the render crashes; the engine uses the fixed font stack)
   Template TYPE by content (verified against our engine — only these):
     - stats / trends over time      -> chart-line-plain-text (values)
     - group / ranking of numbers    -> chart-column-simple (values)
     - shares / proportions          -> chart-pie-donut-plain-text | chart-wordcloud (values)
     - step-by-step / evolution      -> sequence-snake-steps-simple | sequence-funnel-simple (sequences)
     - multi-actor interaction       -> sequence-interaction-default-compact-card (swimlanes + relations)
-    - two-sided comparison          -> compare-hierarchy-left-right-circle-node-pill-badge (2 roots + children)
+    - two-sided comparison          -> compare-hierarchy-left-right-circle-node-pill-badge
+                                      (LAST RESORT for true binary contrasts only —
+                                      this template gets monotonous; prefer
+                                      compare-quadrant-*, funnel, chart-column,
+                                      waterfall, zigzag or grid for contrasts)
     - 2x2 matrix / quadrant         -> compare-quadrant-quarter-simple-card (4 roots)
     - point list / N facts          -> list-grid-badge-card | list-row-horizontal-icon-arrow (lists)
     - money / value flow            -> list-waterfall-badge-card (lists, value + desc)
@@ -125,6 +154,10 @@ AntV spec syntax (official AntV Infographic skill):
       fallback, not the default.
     - gradients (stylize linear-gradient) for hero items; wordcloud for
       terminology cards.
+    - VARY THE TEMPLATE across cards in the same deck: never repeat the same
+      template for consecutive cards, and avoid reusing a template type more
+      than twice per deck (a reminder about the deck's recent templates is
+      appended to each task — follow it).
   Item drops (template capacity) are detected and fail the attempt — never
   drop items; pick a template that FITS the count (6+ facts -> list-grid/column).
   DATA best practices (AntV infographic-design guide):
@@ -368,7 +401,7 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
     """LLM card generation with validation-retry loop.
     Returns (card dict, reasons); reasons = [] on success."""
     system = build_system(topic)
-    user = USER.format(title=title, url=url, topic=topic, body=body)
+    user = USER.format(title=title, url=url, topic=topic, body=body) + _variety_note()
     previous = None
     errors: list[str] = []
     reasons: list[str] = []
@@ -407,6 +440,9 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
             infographic_strict=card.get("_infographic_lane") != "antv",
         )
         if ok:
+            tpl = _template_of(card)
+            if tpl:
+                _USED_TEMPLATES.append(tpl)
             return card, []
         reasons.append(f"attempt {attempt}: " + "; ".join(errors[:4]))
         log.warning("attempt %d failed validation: %s", attempt, errors[:3])
@@ -437,6 +473,7 @@ def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True,
         return {"made": 0, "skipped_dupes": 0, "failed": 0, "card_ids": [],
                 "projected": 0, "locked": True}
     try:
+        _USED_TEMPLATES.clear()
         return _run_generation_locked(conn, cfg, count, do_harvest, regenerate)
     finally:
         fcntl.flock(lock_fh, fcntl.LOCK_UN)
