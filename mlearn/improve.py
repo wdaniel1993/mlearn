@@ -177,10 +177,11 @@ def improve_card(conn, cfg: dict, card_id: int, note: str = "",
             "figures_json": row["figures_json"] or "",
         }
         body = source_text
-        ok, errors = val_mod.validate_card(
-            merged, body, tools_dir, infographic_strict=False)
+        ok, errors_ = val_mod.validate_card(
+            merged, body, tools_dir, infographic_strict=False,
+            banner_check=("infographic_spec" in patch))
         if not ok:
-            reasons.append(f"attempt {attempt}: " + "; ".join(errors[:4]))
+            reasons.append(f"attempt {attempt}: " + "; ".join(errors_[:4]))
             continue
         _apply(conn, card_id, row, patch)
         conn.commit()
