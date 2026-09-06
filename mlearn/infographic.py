@@ -70,34 +70,95 @@ def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
     return svg, ""
 
 
-_ACCENT_GRAY = {"#ffffff", "#000000", "#1f1f1f", "#0f1216", "#101216"}
-
-
 def _check_liveliness(spec: str, svg: str) -> str | None:
-    """The 'alive' gate: banners must carry icons and a palette, and the
-    RENDER must show at least two accent colors beyond white/gray. A spec
-    that passes render but shows only white text boxes reads as a
-    placeholder — fail it and the retry loop feeds the fix back."""
+    """The 'alive' gate: rendered banners must show a palette and >=2
+    distinct accent hue families (a single-hue gradient + white text reads
+    as a placeholder; templates render icons differently — some as <use>,
+    most as custom shapes — so hue diversity is the reliable signal). Also
+    enforces count honesty: if the title announces a small number of items
+    (e.g. 'TRL 1-9', '7 layers'), the banner must show that many —
+    pre-truncating content to fit a template is a silent drop."""
     first = spec.strip().splitlines()[0]
     fam = first.split()[1] if len(first.split()) > 1 else ""
-    needs_icons = fam.startswith(("list-", "sequence-", "compare-", "hierarchy-"))
-    if needs_icons and len(re.findall(r"^\s+icon\s+\S", spec, re.M)) < 2:
-        return ("banner lacks icons: semantic keyword items (lists/sequences/"
-                "compares/hierarchy) must carry 'icon <keywords>' on at least"
-                " 2 items — e.g. icon rocket launch, icon shield check")
     if not re.search(r"^\s*palette\s+", spec, re.M):
         return ("banner lacks a palette: add 'theme' 'palette' with 2-5 "
                 "BRIGHT colors (single-color banners read as placeholders), "
                 "e.g. #22d3ee #22c55e #f59e0b #f97316")
-    fills = set(re.findall(r'(?:fill|stop-color)="#([0-9a-fA-F]{6})"', svg))
-    accents = {f for f in fills
-               if f.lower() not in _ACCENT_GRAY
-               and not (f[1:3] == f[3:5] == f[5:7])}
-    if len(accents) < 2:
-        return (f"render shows only {len(accents)} accent color(s) — the "
-                "template renders the palette too thinly; pick a template "
-                "with real color blocks (chart, quadrant, funnel, waterfall)"
-                " or restyle with stylize linear-gradient")
+    if not fam.startswith("chart-"):
+        hues = _accent_hue_families(svg)
+        if hues < 2:
+            return (f"render shows only {hues} accent hue famil(y/ies) — the "
+                    "banner is a single-color text layout. Pick a template "
+                    "with real color blocks (quadrant, funnel, waterfall, "
+                    "column chart, hierarchy, grid) and keep 3-5 palette "
+                    "colors")
+    anno = _announced_count(spec)
+    if anno:
+        shown = _item_count(spec)
+        if shown and shown < anno:
+            return (f"title announces {anno} items but the banner has only "
+                    f"{shown}: NEVER drop items to fit a template. Switch to "
+                    "a template that scales (list-column-done-list / "
+                    "list-grid-badge-card fit 8+, chart-* fit 8+)")
+    return None
+
+
+def _accent_hue_families(svg: str) -> int:
+    """Cluster accent colors (fills + gradient stops) by hue. Requires
+    saturation >= 0.30 and value >= 0.55 so white/gray/dark don't count;
+    hues within 25 degrees merge into one family."""
+    import math
+    hexes = set(re.findall(r'(?:fill|stop-color)="#([0-9a-fA-F]{6})"', svg))
+    hues = []
+    for h in hexes:
+        r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        mx, mn = max(r, g, b), min(r, g, b)
+        d = mx - mn
+        sat = 0 if mx == 0 else d / mx
+        if sat < 0.30 or mx < 0.55:
+            continue
+        if d == 0:
+            hu = 0.0
+        elif mx == r:
+            hu = ((g - b) / d) % 6
+        elif mx == g:
+            hu = (b - r) / d + 2
+        else:
+            hu = (r - g) / d + 4
+        hues.append(hu * 60)
+    if not hues:
+        return 0
+    hues.sort()
+    fams = 1
+    for i in range(1, len(hues)):
+        if abs(hues[i] - hues[i - 1]) > 25:
+            fams += 1
+    return fams
+
+
+def _announced_count(spec: str) -> int | None:
+    """Small-number announcements in the title: 'TRL 1-9', '7 layers',
+    '3 components'. Returns the announced count or None."""
+    m = re.search(r"^  title\s+(.+?)\s*$", spec, re.M)
+    if not m:
+        return None
+    title = m.group(1)
+    rng = re.search(r"(?:\b|^)(\d{1,2})\s*[-–—]\s*(\d{1,2})(?:\b|$)", title)
+    nouns = re.search(
+        r"(\d{1,2})\s*(?:layers|steps|levels|stages|components|items|rules|"
+        r"parts|phases|pillars|habits|principles|trls?)\b", title, re.I)
+    if rng and int(rng.group(2)) <= 12:
+        return int(rng.group(2))
+    if nouns:
+        return int(nouns.group(1))
+    return None
+
+
+def _item_count(spec: str) -> int | None:
+    for blk in ("lists", "sequences", "values", "compares", "items"):
+        m = re.search(rf"^\s*{blk}\s*$", spec, re.M)
+        if m:
+            return len(re.findall(r"^\s+- label\s+", spec[m.end():], re.M))
     return None
 
 

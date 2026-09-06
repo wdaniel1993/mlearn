@@ -172,12 +172,20 @@ def test_liveliness_gate():
               "    - label 92%\n      desc underperform\n"
               "    - label 28%\n      desc eaten by fees\n")
     svg, err = render_spec(sparse, tools)
-    assert svg is None and "lacks icons" in err
+    assert svg is None and "lacks a palette" in err
     no_pal = ("infographic chart-column-simple\n"
               "data\n  title Yield\n  values\n"
               "    - label 2020\n      value 12.5\n    - label 2021\n      value 20\n")
     svg, err = render_spec(no_pal, tools)
     assert svg is None and "lacks a palette" in err
+    # single-hue palette passes luminance but renders as one accent family
+    mono = ("infographic list-grid-badge-card\n"
+            "data\n  title Facts\n  lists\n"
+            "    - label 92%\n      desc underperform\n      icon star fill\n"
+            "    - label 28%\n      desc eaten by fees\n      icon star fill\n"
+            "theme\n  palette #22d3ee\n")
+    svg, err = render_spec(mono, tools)
+    assert svg is None and "accent hue" in err
 
 
 def test_palette_luminance_gate():
