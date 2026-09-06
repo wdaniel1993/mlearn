@@ -378,7 +378,7 @@ def due_prompts(conn, count: int = 5) -> list[dict]:
     """Due recall prompts (< = now) on already-served cards, oldest first."""
     rows = conn.execute(
         """SELECT pr.id AS prompt_id, pr.question, pr.due_at, pr.last_review,
-                  c.id AS card_id, c.title, cl.label AS topic
+                  c.id AS card_id, c.title, c.hook AS hook, cl.label AS topic
            FROM prompts pr JOIN cards c ON c.id = pr.card_id
            JOIN clusters cl ON cl.id = c.cluster_id
            WHERE pr.due_at IS NOT NULL AND pr.due_at <= ? AND c.status = 'served'

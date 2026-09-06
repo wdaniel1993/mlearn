@@ -101,6 +101,25 @@ ANTV_BANNER = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 688 145">'
                '</foreignObject></g></svg>')
 
 
+def test_truncation_detector():
+    """list-pyramid-* caps at 6 items by design; the detector must fail the
+    attempt so the retry loop switches to a scaling template."""
+    import shutil
+    from pathlib import Path
+    if shutil.which("node") is None:
+        import pytest
+        pytest.skip("node not available")
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    from mlearn.infographic import render_spec
+    items7 = "".join(f"    - label L{i}\n      desc layer {i}\n" for i in range(1, 8))
+    svg, err = render_spec(
+        f"infographic list-pyramid-badge-card\ndata\n  title Seven\n  lists\n{items7}", tools)
+    assert svg is None and "dropped items" in err and "L7" in err
+    svg, err = render_spec(
+        f"infographic list-column-done-list\ndata\n  title Seven\n  lists\n{items7}", tools)
+    assert svg is not None and err == ""
+
+
 def test_antv_banner_needs_non_strict_layout(tmp_path):
     """Engine-rendered banners are tight by construction: the fill-height
     layout gate only applies to the raw hand-written lane."""

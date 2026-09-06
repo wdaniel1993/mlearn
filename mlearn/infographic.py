@@ -56,4 +56,27 @@ def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
     svg = proc.stdout.strip()
     if not svg.startswith("<svg"):
         return None, "renderer produced no svg"
+    trunc = _check_truncation(spec, svg)
+    if trunc:
+        return None, trunc
     return svg, ""
+
+
+def _check_truncation(spec: str, svg: str) -> str | None:
+    """Detect silent item drops: some templates cap their item count
+    geometrically (e.g. list-pyramid-* renders at most 6) and slice the rest.
+    Every label declared under `lists` must appear in the rendered SVG —
+    otherwise the renderer truncated and the retry loop must switch templates."""
+    m = re.search(r"^\s*lists\s*$", spec, re.M)
+    if not m:
+        return None
+    labels = re.findall(r"^\s+- label\s+(.+?)\s*$", spec[m.end():], re.M)
+    if len(labels) < 3:
+        return None
+    missing = [lbl for lbl in labels if lbl.strip() not in svg]
+    if missing:
+        return (f"renderer dropped items: {len(labels) - len(missing)} of "
+                f"{len(labels)} rendered (missing: {', '.join(missing[:3])}) — "
+                f"this template caps its item count; use list-column-done-list "
+                f"or list-grid-badge-card for {len(labels)} items")
+    return None
