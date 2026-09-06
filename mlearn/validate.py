@@ -15,11 +15,14 @@ MIN_PROMPTS = 2
 MAX_DIAGRAM_LINES = 10  # simple, very understandable diagrams only (no walls)
 MAX_INF_CHARS = 15_000  # infographic SVG size cap
 MAX_INF_TEXTS = 40      # infographic: text element cap
-MAX_INF_TEXT_CHARS = 100  # infographic: per-<text> cap (no overflow walls)
+MAX_INF_TEXT_CHARS = 200  # per text element (span-wrapped lines inside foreignObject)
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?%?")
 _MERMAID_FENCE_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.S)
-_SVG_TAG_RE = re.compile(r"<(script|foreignObject|foreignobject)\b", re.I)
+_SVG_TAG_RE = re.compile(r"<script|</script|<iframe", re.I)
+# event handlers and javascript: URLs are banned even inside engine-rendered
+# foreignObject HTML (AntV renders text as HTML spans — legit, but scrubbed)
+_SVG_ATTR_RE = re.compile(r"\son\w+\s*=|javascript\s*:", re.I)
 _EXT_REF_RE = re.compile(r"\bxlink:href\s*=|href\s*=\s*[\"']https?:", re.I)
 
 
@@ -83,14 +86,51 @@ def _localname(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].lower()
 
 
-def infographic_valid(svg: str) -> tuple[bool, str]:
-    """Visual-lane gate: infographic_svg must be a small, self-contained SVG."""
+def _svg_text_items(root) -> list[tuple[str, float]]:
+    """(text, y) for <text> elements AND AntV <foreignObject> text spans.
+
+    foreignObject carries the rendered HTML text when the AntV engine renders
+    a spec; y accumulates translate() transforms from ancestor groups."""
+    parents = {}
+    for el in root.iter():
+        for child in el:
+            parents[child] = el
+    items = []
+    for el in root.iter():
+        if _localname(el.tag) not in ("text", "foreignobject"):
+            continue
+        txt = "".join(el.itertext()).strip()
+        if not txt:
+            continue
+        y = _num(el.get("y"))
+        node = el
+        while node is not None:
+            t = node.get("transform")
+            if t:
+                m = re.search(r"translate\(\s*([-\d.eE]+)[,\s]+([-\d.eE]+)", t)
+                if m:
+                    y += float(m.group(2))
+            node = parents.get(node)
+        items.append((txt, y))
+    return items
+
+
+def infographic_valid(svg: str, strict_layout: bool = True) -> tuple[bool, str]:
+    """Visual-lane gate: infographic_svg must be a small, self-contained SVG.
+
+    Engine-agnostic: covers raw model-written SVG and AntV-rendered specs
+    (foreignObject text spans, banner aspect). strict_layout applies the
+    fill-height rule (lowest text baseline reaches the bottom quarter) — the
+    raw lane needs it (models leave blank bands); AntV-rendered banners are
+    tight by construction."""
     if not svg or not svg.strip():
         return False, "empty"
     if len(svg) > MAX_INF_CHARS:
         return False, f"too large: {len(svg)} chars > {MAX_INF_CHARS}"
     if _SVG_TAG_RE.search(svg):
-        return False, "script / foreignObject banned"
+        return False, "script / iframe banned"
+    if _SVG_ATTR_RE.search(svg):
+        return False, "event handlers / javascript: banned"
     if _EXT_REF_RE.search(svg):
         return False, "external hrefs banned (must be self-contained)"
     try:
@@ -106,38 +146,18 @@ def infographic_valid(svg: str) -> tuple[bool, str]:
         vb_w, vb_h = (float(v) for v in vb.split()[-2:])  # viewBox = minx miny WIDTH HEIGHT
     except ValueError:
         return False, "viewBox must be numeric"
-    # Canvas-fill gate: a near-full-bleed background rect must cover the canvas
-    # (kills the 'big empty band below the poster' failure mode)
-    covered = any(
-        _localname(el.tag) == "rect"
-        and _num(el.get("x")) <= 0.02 * vb_w
-        and _num(el.get("y")) <= 0.02 * vb_h
-        and _num(el.get("x")) + _num(el.get("width")) >= 0.98 * vb_w
-        and _num(el.get("y")) + _num(el.get("height")) >= 0.98 * vb_h
-        for el in root.iter()
-    )
-    if not covered:
-        return False, "canvas not filled: need a full-bleed background rect"
-    # Fill-height gate: the lowest text baseline must reach ~80% of canvas height
-    # (kills the 'big empty band under the poster' failure mode)
-    max_y = max(
-        (_num(el.get("y")) for el in root.iter() if _localname(el.tag) == "text"),
-        default=0.0,
-    )
-    if max_y < 0.60 * vb_h:
-        return False, (f"text stops at y={max_y:.0f} (< 60% of {vb_h:.0f} canvas height)"
+    items = _svg_text_items(root)
+    if not items:
+        return False, "no text — an infographic must carry text"
+    for txt, _y in items:
+        if len(txt) > MAX_INF_TEXT_CHARS:
+            return False, f"text too long ({len(txt)} chars > {MAX_INF_TEXT_CHARS})"
+    if len(items) > MAX_INF_TEXTS:
+        return False, f"{len(items)} text elements > {MAX_INF_TEXTS}"
+    max_y = max(y for _t, y in items)
+    if strict_layout and max_y < 0.75 * vb_h:
+        return False, (f"text stops at y={max_y:.0f} (< 75% of {vb_h:.0f} canvas height)"
                        f" — content must fill the canvas")
-    n_texts = 0
-    for el in root.iter():
-        if _localname(el.tag) == "text":
-            n_texts += 1
-            txt = "".join(el.itertext())
-            if len(txt) > MAX_INF_TEXT_CHARS:
-                return False, f"<text> too long ({len(txt)} chars > {MAX_INF_TEXT_CHARS})"
-    if n_texts == 0:
-        return False, "no <text> elements — an infographic must carry text"
-    if n_texts > MAX_INF_TEXTS:
-        return False, f"{n_texts} <text> elements > {MAX_INF_TEXTS}"
     return True, ""
 
 
@@ -147,8 +167,7 @@ def infographic_text(svg: str) -> str:
         root = ET.fromstring(svg)
     except ET.ParseError:
         return ""
-    return "\n".join("".join(el.itertext()) for el in root.iter()
-                     if _localname(el.tag) == "text")
+    return "\n".join(txt for txt, _y in _svg_text_items(root))
 
 
 def body_mermaid_fences(body_md: str) -> list[str]:
@@ -188,8 +207,12 @@ def figures_pass(diagram_type: str, diagram_src: str, figures_json: str | None,
     return True, ""
 
 
-def validate_card(card: dict, source_body: str, tools_dir: str | Path) -> tuple[bool, list[str]]:
-    """All hard gates. Return (ok, [error strings])."""
+def validate_card(card: dict, source_body: str, tools_dir: str | Path,
+                  infographic_strict: bool = True) -> tuple[bool, list[str]]:
+    """All hard gates. Return (ok, [error strings]).
+
+    infographic_strict=False when the infographic was rendered by the AntV
+    engine (banner aspect): the fill-height layout gate does not apply."""
     errors: list[str] = []
 
     if not anchor_in_body(card.get("anchor_quote", ""), source_body):
@@ -212,7 +235,7 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path) -> tuple[
                           f"(simple, very understandable diagrams only)")
         figures_visual = diagram_src
     else:
-        ok, err = infographic_valid(infographic)
+        ok, err = infographic_valid(infographic, infographic_strict)
         if not ok:
             errors.append(f"infographic invalid: {err} (C6)")
         figures_visual = infographic_text(infographic) if ok else ""
