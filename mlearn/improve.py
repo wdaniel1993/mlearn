@@ -101,14 +101,15 @@ def improve_card(conn, cfg: dict, card_id: int, note: str = "",
     if loaded is None:
         return {"card_id": card_id, "ok": False, "changed": [], "error": "card not found"}
     row, prompts = loaded
-    # source text for the verbatim gates (anchor quote / figures)
+    # source text for the verbatim gates (anchor quote / figures) — the FULL
+    # text, same as generation validates against (a 4000-char window cut off
+    # anchors/figures deep in long articles and false-failed the gates)
     source_text = ""
     if row["item_raw"]:
         try:
             source_text = gen.item_text(row["item_raw"], row["item_title"] or "")
         except Exception:
             source_text = ""
-    source_text = " ".join(source_text.split())[:4000]
     allowed = _allowed(scope)
 
     base = _card_json(row, prompts)
