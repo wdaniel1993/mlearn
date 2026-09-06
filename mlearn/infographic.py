@@ -24,7 +24,8 @@ def spec_valid(spec: str) -> tuple[bool, str]:
         return False, "empty spec"
     if len(spec) > MAX_SPEC_CHARS:
         return False, f"spec too long: {len(spec)} chars > {MAX_SPEC_CHARS}"
-    if not SPEC_RE.search(spec):
+    head = spec.strip().splitlines()[0] if spec.strip() else ""
+    if not re.match(r"^infographic\s+[a-zA-Z0-9][a-zA-Z0-9-]*\s*$", head):
         return False, "spec must start with an 'infographic <template>' line"
     if not DATA_RE.search(spec):
         return False, "spec must contain a 'data' section"
@@ -38,11 +39,11 @@ def salvage_spec(text: str) -> str | None:
     failure): take the substring from the first 'infographic <template>'
     line up to the closing ``` fence (or end of text), then re-validate.
     Returns the salvaged spec or None."""
-    m = re.search(r"infographic\s+[a-zA-Z0-9][a-zA-Z0-9-]*", text)
+    m = re.search(r"^\s*infographic\s+[a-zA-Z0-9][a-zA-Z0-9-]*\s*$", text, re.M)
     if not m:
         return None
-    start = text.rfind("\n", 0, m.start()) + 1
-    end = text.find("```", m.start())
+    start = m.start()
+    end = text.find("```", m.end())
     if end == -1:
         end = len(text)
     cand = text[start:end].strip()
@@ -71,6 +72,18 @@ def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
         return None, "node not found on PATH"
     except subprocess.TimeoutExpired:
         return None, "infographic render timed out"
+    if proc.returncode != 0 and "```" in spec:
+        # prose/fence-wrapped specs that slipped past the gates: salvage the
+        # spec block and re-render once before giving up
+        saved = salvage_spec(spec)
+        if saved is not None and saved != spec:
+            try:
+                proc = subprocess.run(
+                    ["node", str(script)], input=saved, capture_output=True,
+                    timeout=60, check=False, text=True, encoding="utf-8")
+                spec = saved
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                pass
     if proc.returncode != 0:
         return None, f"render failed: {proc.stderr.strip()[:200]}"
     svg = proc.stdout.strip()
