@@ -94,19 +94,74 @@ def test_body_mermaid_fences_extracts_blocks():
     assert body_mermaid_fences("no fences here") == []
 
 
-def test_no_background_rect_rejected(tmp_path):
-    """Canvas-fill gate: without a full-bleed background the poster gets
-    white bands (the 'lots of white space below' failure mode)."""
+ANTV_BANNER = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 688 145">'
+               '<g transform="translate(0, 60)">'
+               '<foreignObject width="200" height="30" y="0" x="0">'
+               '<span>92% of funds underperform the market</span>'
+               '</foreignObject></g></svg>')
+
+
+def test_antv_banner_needs_non_strict_layout(tmp_path):
+    """Engine-rendered banners are tight by construction: the fill-height
+    layout gate only applies to the raw hand-written lane."""
+    from mlearn.validate import infographic_valid
+    ok, err = infographic_valid(ANTV_BANNER)          # strict (raw lane)
+    assert not ok and "fill the canvas" in err
+    ok, err = infographic_valid(ANTV_BANNER, strict_layout=False)
+    assert ok, err
+
+
+def test_foreignobject_event_handler_rejected():
+    from mlearn.validate import infographic_valid
+    evil = GOOD_SVG.replace(
+        '<text x="40" y="60"', '<foreignObject onmouseover="evil()" width="10" height="10">x</foreignObject><text x="40" y="60"')
+    ok, err = infographic_valid(evil)
+    assert not ok and "event handlers" in err
+
+
+def test_foreignobject_text_accepted(tmp_path):
+    """AntV renders text as foreignObject HTML spans — must pass the gates
+    (script/attr bans still apply)."""
     d = _base()
     d["diagram_src"] = ""
-    d["infographic_svg"] = GOOD_SVG
-    svg = d["infographic_svg"].replace(
-        '<rect x="10" y="10" width="780" height="500" fill="#101216"/>',
-        '<circle cx="400" cy="200" r="100" fill="#101216"/>')
-    d["infographic_svg"] = svg
-    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools")
-    assert not ok
-    assert any("canvas not filled" in e for e in errs)
+    d["infographic_svg"] = ANTV_BANNER
+    ok, errs = validate_card(d, SOURCE_BODY, tmp_path / "tools",
+                             infographic_strict=False)
+    assert ok, errs
+
+
+def test_apply_infographic_lane_renders_spec(tmp_path):
+    import shutil
+    from pathlib import Path
+    if shutil.which("node") is None:
+        import pytest
+        pytest.skip("node not available")
+    from mlearn.generate import apply_infographic_lane
+    tools = Path(__file__).resolve().parents[1] / "tools"
+    spec = ("infographic list-grid-simple\ndata\n  title Stats\n  lists\n"
+            "    - label 92%\n      desc of funds underperforming the index\n")
+    card = {"diagram_src": "", "infographic_spec": spec}
+    errs = apply_infographic_lane(card, tools)
+    assert errs == [] and card.get("_infographic_lane") == "antv"
+    assert card["infographic_svg"].startswith("<svg")
+    from mlearn.validate import infographic_valid
+    ok, err = infographic_valid(card["infographic_svg"], strict_layout=False)
+    assert ok, err
+
+
+def test_apply_infographic_lane_rejects_bad_spec():
+    from mlearn.generate import apply_infographic_lane
+    card = {"infographic_spec": "this is not a spec"}
+    errs = apply_infographic_lane(card, "tools")
+    assert errs and "spec invalid" in errs[0]
+    assert "infographic_svg" not in card
+
+
+def test_apply_infographic_lane_no_spec():
+    from mlearn.generate import apply_infographic_lane
+    card = {"diagram_src": "flowchart TD\nA-->B"}
+    assert apply_infographic_lane(card, "tools") == []
+    assert "infographic_svg" not in card
 
 
 def test_short_content_rejected(tmp_path):

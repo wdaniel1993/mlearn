@@ -19,6 +19,7 @@ from . import embed as embed_mod
 from . import project as project_mod
 from . import textutil
 from . import validate as validate_mod
+from . import infographic as infographic_mod
 
 log = logging.getLogger("mlearn.generate")
 
@@ -62,7 +63,8 @@ The JSON must have exactly these keys:
   "body_md": "200-500 words, pyramid style, easy language",
   "diagram_type": "concept" or "data",
   "diagram_src": "one mermaid diagram, parse-valid syntax (or empty string)",
-  "infographic_svg": "optional self-contained SVG infographic, or absent",
+  "infographic_spec": "optional AntV infographic spec (preferred infographic lane)",
+  "infographic_svg": "optional hand-written SVG infographic (fallback lane only)",
   "figures": [{"value": <number>, "source": "<verbatim span from the article>"}],
   "anchor_quote": "verbatim span from the article, max 25 words",
   "prompts": [{"question": "...", "answer": "..."}]
@@ -71,14 +73,26 @@ The JSON must have exactly these keys:
 VISUAL RULE — one hero visual per card, your choice:
 - Prefer a mermaid diagram (diagram_src) when the card is about a mechanism,
   structure, flow, taxonomy, or process — the diagram carries the core idea alone.
-- Prefer an infographic (infographic_svg) when the card is about numbers, stat-
-  contrasts, steps, or a comparison that a poster layout serves better. The SVG
-  must be fully self-contained: NO external fonts, NO scripts, NO external images,
-  NO foreignObject. Dark theme (background transparent or #101216), viewBox about
-  800x520, crisp short text in a sans-serif stack, generous padding, a headline,
-  ONE big highlighted number or statistic, 3-4 compact blocks/steps, and a
-  one-line takeaway banner. Text must never overflow its box; keep every <text>
-  under 100 characters; up to ~40 elements total.
+- For numbers, stat-contrasts, steps, or comparisons, prefer an INFOGRAPHIC via
+  infographic_spec — an AntV declarative spec (rendered as a wide banner by the
+  engine; tight layout guaranteed). Use the template 'list-grid-simple' unless
+  you know another; valid example:
+    infographic list-grid-simple
+    data
+      title Match the market, don't beat it
+      lists
+        - label 92%
+          desc of active funds underperformed the S&P 500 over 15 years
+        - label ~28%
+          desc of lifetime returns eaten by a 1% annual fee
+  Keep labels ultra-short and desc under 25 words. If spec render fails it is
+  fed back to you — then fix the shape or fall back to infographic_svg.
+- infographic_svg is the FALLBACK lane (only when a spec is not practical):
+  hand-written self-contained SVG, NO external fonts/scripts/images,
+  NO foreignObject. Dark theme, viewBox about 800x520, crisp short text in a
+  sans-serif stack, generous padding, a headline, ONE big highlighted number
+  or statistic, 3-4 compact blocks/steps, a one-line takeaway banner, and
+  content that fills the canvas (no blank band at the bottom).
 - The remaining visual budget (optional): inline ```mermaid fences inside body_md
   wherever a small diagram aids a section — as many as you see fit, each small
   (<= 10 lines).
@@ -221,6 +235,26 @@ def item_text(raw_path: str | None, title: str | None) -> str:
     return title or ""
 
 
+def apply_infographic_lane(card: dict, tools_dir: str | Path) -> list[str]:
+    """Materialize the infographic lane for a parsed card.
+
+    infographic_spec (AntV DSL) wins: rendered to SVG via node and stored as
+    infographic_svg. Errors are returned for the retry loop; on success the
+    caller should validate with infographic_strict=False (banner aspect)."""
+    spec = card.get("infographic_spec")
+    if not spec or not str(spec).strip():
+        return []
+    ok, err = infographic_mod.spec_valid(str(spec))
+    if not ok:
+        return [f"infographic spec invalid: {err}"]
+    svg, rerr = infographic_mod.render_spec(str(spec), tools_dir)
+    if svg is None:
+        return [f"infographic spec render failed: {rerr}"]
+    card["infographic_svg"] = svg
+    card["_infographic_lane"] = "antv"
+    return []
+
+
 def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
                   attempts: int = MAX_RETRIES) -> tuple[dict | None, list[str]]:
     """LLM card generation with validation-retry loop.
@@ -254,7 +288,16 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
         card["cluster"] = topic
         card["source_url"] = url
         card["figures_json"] = json.dumps(card.get("figures") or [])
-        ok, errors = validate_mod.validate_card(card, body, Path(cfg.get("_base_dir", ".")) / "tools")
+        lane_errors = apply_infographic_lane(card, Path(cfg.get("_base_dir", ".")) / "tools")
+        if lane_errors:
+            reasons.append(f"attempt {attempt}: " + "; ".join(lane_errors[:2]))
+            log.warning("attempt %d infographic lane: %s", attempt, lane_errors[:2])
+            previous = {k: v for k, v in card.items() if k != "source_body"}
+            continue
+        ok, errors = validate_mod.validate_card(
+            card, body, Path(cfg.get("_base_dir", ".")) / "tools",
+            infographic_strict=card.get("_infographic_lane") != "antv",
+        )
         if ok:
             return card, []
         reasons.append(f"attempt {attempt}: " + "; ".join(errors[:4]))
