@@ -35,10 +35,13 @@ def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row],
     md = ["---", yaml.safe_dump(frontmatter, sort_keys=False, allow_unicode=True).rstrip(), "---", ""]
     md.append(f"> Why this matters: {card['hook']}")
     md.append("")
-    md.append("```mermaid")
-    md.append(card["diagram_src"].rstrip())
-    md.append("```")
-    md.append("")
+    # one-main-image contract: diagram_src is ALWAYS empty (mermaid lives as
+    # inline fences in body_md) — no hero placeholder
+    if (card["diagram_src"] or "").strip():
+        md.append("```mermaid")
+        md.append(card["diagram_src"].rstrip())
+        md.append("```")
+        md.append("")
     if infographic_name:
         md.append(f"![[{infographic_name}]]")
         md.append("")
