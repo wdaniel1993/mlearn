@@ -66,12 +66,16 @@ process.stdin.on('end', async () => {
           .then((s) => resolve(s.outerHTML))
           .catch(reject);
       });
-      infographic.on('error', (e) => reject(new Error(String(e && e.message || e))));
+      infographic.on('error', (e) => reject(new Error(
+        e && e.message ? e.message
+          : (typeof e === 'string' ? e : JSON.stringify(e, null, 1)))));
       infographic.render(spec);
     });
     process.stdout.write(svg);
   } catch (e) {
-    console.error('[render_infographic] ' + (e && e.message ? e.message : String(e)));
+    const errText = e && e.message ? e.message
+      : (typeof e === 'string' ? e : JSON.stringify(e, null, 1));
+    console.error('[render_infographic] ' + errText);
     process.exit(1);
   } finally {
     clearTimeout(timer);
