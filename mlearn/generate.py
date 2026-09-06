@@ -70,13 +70,16 @@ The JSON must have exactly these keys:
   "prompts": [{"question": "...", "answer": "..."}]
 }
 
-VISUAL RULE — one hero visual per card, your choice:
-- Prefer a mermaid diagram (diagram_src) when the card is about a mechanism,
-  structure, flow, taxonomy, or process — the diagram carries the core idea alone.
-- For numbers, stat-contrasts, steps, or comparisons, prefer an INFOGRAPHIC via
-  infographic_spec — an AntV declarative spec (rendered as a wide banner by the
-  engine; tight layout guaranteed). Choose the TEMPLATE to match the content's
-  structure (AntV design guide):
+VISUAL RULE — one hero visual per card:
+- STRONG PREFERENCE: the main image is an INFOGRAPHIC via infographic_spec —
+  an AntV declarative spec, rendered as a wide banner by the engine. AntV
+  templates ship icons, illustrations and graphs that make the card feel
+  alive; use them for almost everything: stats, steps, comparisons, levels,
+  hierarchies, lists of facts.
+- Use a mermaid diagram (diagram_src) ONLY when the content is a branching
+  flow or decision logic the spec templates cannot express (conditionals,
+  loops, state machines) — otherwise the infographic wins.
+  Choose the TEMPLATE to match the content's structure (AntV design guide):
     list-grid-simple / list-column-done-list / list-pyramid-badge-card — modular
       lists, pyramids, levels
     sequence-steps-badge-card / sequence-timeline-plain-text — flows, steps, timelines
