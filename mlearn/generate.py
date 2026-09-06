@@ -99,6 +99,17 @@ VISUAL RULE — exactly ONE main image per card:
   no other main image; diagram_src must be an empty string.
 - Mermaid diagrams: ZERO TO MANY, ONLY as inline ```mermaid fences embedded in
   body_md (each parse-valid, <= 10 lines). NEVER as a standalone main image.
+  Mermaid semantics (a stranger must understand the message from the diagram
+  alone):
+    - prefer flowchart LR with labeled edges (A -->|because X| B); the causal
+      direction must be OBVIOUS and CORRECT.
+    - a stateDiagram-v2 is ONLY for true state machines (explicit states,
+      transitions) — never for causal chains. Do not draw loops that imply
+      causality (e.g. 'Real delays --> Next task' reads as 'delays cause the
+      next task').
+    - when the message is a causal chain (input -> mechanism -> outcome -> cost),
+      keep it LINEAR and let it END; if a habit truly repeats, make the loop
+      explicit with a dotted edge and a label like 'repeats'.
 
 AntV spec syntax (official AntV Infographic skill):
   - data blocks indent with TWO spaces; array items start with "- ";
