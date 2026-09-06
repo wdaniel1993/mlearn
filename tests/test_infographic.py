@@ -182,14 +182,24 @@ def test_liveliness_gate():
               "    - label 2020\n      value 12.5\n    - label 2021\n      value 20\n")
     svg, err = render_spec(no_pal, tools)
     assert svg is None and "lacks a palette" in err
-    # single-hue palette passes luminance but renders as one accent family
-    mono = ("infographic list-grid-badge-card\n"
-            "data\n  title Facts\n  lists\n"
-            "    - label 92%\n      desc underperform\n      icon star fill\n"
-            "    - label 28%\n      desc eaten by fees\n      icon star fill\n"
+    # single-hue palette on a chart template renders (charts are exempt
+    # from the hue gate — their liveliness is structural)
+    mono = ("infographic chart-column-simple\n"
+            "data\n  title Yield\n  values\n"
+            "    - label 2020\n      value 12.5\n    - label 2021\n      value 20\n"
             "theme\n  palette #22d3ee\n")
     svg, err = render_spec(mono, tools)
-    assert svg is None and "accent hue" in err
+    assert svg is not None, err
+    # icons bring their own accent colors, so a mono palette on an
+    # icon template also renders (icons liven the banner directly —
+    # icon fix; previously the single-hue gate rejected this class)
+    mono_icons = ("infographic list-grid-badge-card\n"
+                  "data\n  title Facts\n  lists\n"
+                  "    - label 92%\n      desc underperform\n      icon star fill\n"
+                  "    - label 28%\n      desc eaten by fees\n      icon star fill\n"
+                  "theme\n  palette #22d3ee\n")
+    svg2, err2 = render_spec(mono_icons, tools)
+    assert svg2 is not None, err2
 
 
 def test_palette_luminance_gate():
