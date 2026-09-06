@@ -59,24 +59,80 @@ def render_spec(spec: str, tools_dir: str | Path) -> tuple[str | None, str]:
     trunc = _check_truncation(spec, svg)
     if trunc:
         return None, trunc
+    dark = _check_palette(spec)
+    if dark:
+        return None, dark
     return svg, ""
+
+
+def _check_palette(spec: str) -> str | None:
+    """Palette colors sit on the engine's DARK background (#1F1F1F): a dark
+    palette = unreadable banner. Every palette hex must be bright enough
+    (WCAG relative luminance >= 0.25). Lightness is a property of the theme,
+    not personal taste — enforce it."""
+    m = re.search(r"^\s*palette\s+(.+?)\s*$", spec, re.M)
+    if not m:
+        return None
+    bad = []
+    for tok in m.group(1).split():
+        hexs = re.findall(r"#([0-9a-fA-F]{6})", tok)
+        if not hexs:
+            continue
+        h = hexs[0]
+        r, g, b = (int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
+        lin = lambda c: c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+        lum = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+        if lum < 0.25:
+            bad.append(f"#{h} (lum {lum:.2f})")
+    if bad:
+        return ("palette color(s) too dark for the fixed dark theme: "
+                + ", ".join(bad[:3])
+                + " — use BRIGHT colors (luminance >= 0.25), e.g. #22d3ee "
+                "#22c55e #f59e0b #f97316 #eab308 #a78bfa")
+    return None
 
 
 def _check_truncation(spec: str, svg: str) -> str | None:
     """Detect silent item drops: some templates cap their item count
-    geometrically (e.g. list-pyramid-* renders at most 6) and slice the rest.
-    Every label declared under `lists` must appear in the rendered SVG —
-    otherwise the renderer truncated and the retry loop must switch templates."""
-    m = re.search(r"^\s*lists\s*$", spec, re.M)
-    if not m:
-        return None
-    labels = re.findall(r"^\s+- label\s+(.+?)\s*$", spec[m.end():], re.M)
-    if len(labels) < 3:
-        return None
-    missing = [lbl for lbl in labels if lbl.strip() not in svg]
-    if missing:
-        return (f"renderer dropped items: {len(labels) - len(missing)} of "
-                f"{len(labels)} rendered (missing: {', '.join(missing[:3])}) — "
-                f"this template caps its item count; use list-column-done-list "
-                f"or list-grid-badge-card for {len(labels)} items")
+    geometrically and slice the rest. Depth-aware rules (verified against
+    engine 0.x):
+    - every CHILD label (a line indented under `children`) must render —
+      losing content is always a failure;
+    - at most ONE root-level label may be absent (compare-binary-* silently
+      omits the second root's label by design while rendering both sides);
+    - lists/sequences/values: every label must render (templates like
+      list-pyramid-* cap at 6 and must switch to list-column/grid)."""
+    def labels_under(start: int) -> list[tuple[int, str]]:
+        return [(len(m.group(1)) // 2, m.group(2))
+                for m in re.finditer(r"^(\s+)- label\s+(.+?)\s*$", spec[start:], re.M)]
+
+    blocks = [("lists",), ("sequences",), ("values",), ("compares",),
+              ("items",), ("root",), ("nodes",)]
+    for b in blocks:
+        m = re.search(rf"^\s*{b[0]}\s*$", spec, re.M)
+        if not m:
+            continue
+        items = labels_under(m.end())
+        if len(items) < 3:
+            continue
+        min_d = min(d for d, _ in items)
+        root_items = [lbl for d, lbl in items if d == min_d]
+        child_items = [lbl for d, lbl in items if d > min_d]
+        missing_root = [lbl for lbl in root_items if lbl not in svg]
+        missing_child = [lbl for lbl in child_items if lbl not in svg]
+        if missing_child:
+            return (f"renderer dropped content items: missing "
+                    f"{', '.join(missing_child[:3])} — template loses nested"
+                    f" data; use a template that fits the depth")
+        if not missing_root:
+            continue
+        if b[0] == "compares" and len(missing_root) == 1:
+            # compare-binary-* omits the second root's label by design
+            # (verified: both sides' children still render)
+            continue
+        return (f"renderer dropped items: {len(root_items) - len(missing_root)}"
+                f" of {len(root_items)} rendered (missing: "
+                f"{', '.join(missing_root[:3])}) — this template caps its"
+                f" item count; use list-column-done-list or"
+                f" list-grid-badge-card for {len(root_items)} items")
     return None

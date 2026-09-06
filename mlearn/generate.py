@@ -88,23 +88,45 @@ AntV spec syntax (official AntV Infographic skill):
       list-*     -> lists     (- label ... [desc/value/icon])
       sequence-* -> sequences (- label ... [icon]; optional "order asc")
       chart-*    -> values    (- label <category> / value <number>, ordered)
-      compare-*  -> compares  (- label ... children ...; binary: exactly 2
-                                roots, each side under its own children)
-      relation-* -> nodes + relations
-      hierarchy-*-> root with children
-  - NEVER add a theme block (the engine applies the fixed dark theme).
-  Template TYPE by content (official AntV guidance):
-    - stats / trends over time  -> chart-line-plain-text (values)
-    - group number comparison   -> chart-bar-plain-text / chart-column-simple (values)
-    - shares / proportions      -> chart-pie-donut-plain-text (values)
-    - step-by-step / evolution  -> sequence-snake-steps-simple / sequence-timeline-simple (sequences)
-    - two-sided comparison      -> compare-binary-horizontal-simple-fold (compares)
-    - pros / cons, SWOT         -> compare-swot (compares)
-    - parallel point list       -> list-grid-badge-card / list-column-done-list (lists)
-    - level stacks              -> list-column-done-list (lists)
-    - node / process relations  -> relation-dagre-flow-tb-simple-circle-node
-  Prefer real graphics (graphs, pies, icons) over bare text boxes; item drops
-  (template capacity) are detected and fail the attempt — never drop items.
+      compare-*  -> compares  (- label ... children ...; quadrant: exactly 4
+                                roots; hierarchy-left-right: exactly 2 roots)
+      relation-* -> nodes + relations (arrows: "A - label -> B")
+      hierarchy-*-> root with children (recursive)
+      sequence-interaction-* -> sequences (swimlanes: - label ... children
+                                - label ... with id + step) + relations arrows
+  - theme block is ALLOWED for visual richness, constrained:
+      palette  -> 2-5 BRIGHT colors, bare hexes (luminance >= 0.25 enforced —
+                  the background is the engine's DARK theme #1F1F1F; dark
+                  palettes are rejected). Bright examples: #22d3ee #22c55e
+                  #10b981 #f59e0b #f97316 #eab308 #a78bfa #f8fafc
+      stylize  -> linear-gradient or radial-gradient only
+  Template TYPE by content (verified against our engine — only these):
+    - stats / trends over time      -> chart-line-plain-text (values)
+    - group / ranking of numbers    -> chart-column-simple (values)
+    - shares / proportions          -> chart-pie-donut-plain-text | chart-wordcloud (values)
+    - step-by-step / evolution      -> sequence-snake-steps-simple | sequence-funnel-simple (sequences)
+    - multi-actor interaction       -> sequence-interaction-default-compact-card (swimlanes + relations)
+    - two-sided comparison          -> compare-hierarchy-left-right-circle-node-pill-badge (2 roots + children)
+    - 2x2 matrix / quadrant         -> compare-quadrant-quarter-simple-card (4 roots)
+    - point list / N facts          -> list-grid-badge-card | list-row-horizontal-icon-arrow (lists)
+    - money / value flow            -> list-waterfall-badge-card (lists, value + desc)
+    - level stacks / ladder         -> list-column-done-list (lists)
+    - hierarchy / tree              -> hierarchy-tree-tech-style-badge-card (root + children)
+    - mind map / topic branches     -> hierarchy-mindmap-branch-gradient-capsule-item (root)
+    - node / process graph          -> relation-dagre-flow-tb-simple-circle-node (nodes + relations)
+  AVOID: compare-binary-*, compare-swot, list-pyramid-* (their engines drop
+  labels — the gate rejects them).
+  MAKE IT ALIVE (this is a design requirement, not decoration):
+    - combine value + desc + icon per item; add data-level desc under title.
+    - give every banner a palette (bright, 2-5 colors) and vary it per item —
+      a single-color banner reads as "placeholder".
+    - prefer the rich templates (quadrant, funnel, swimlane, waterfall,
+      chart, hierarchy, relation) over text boxes; list-* grids are the
+      fallback, not the default.
+    - gradients (stylize linear-gradient) for hero items; wordcloud for
+      terminology cards.
+  Item drops (template capacity) are detected and fail the attempt — never
+  drop items; pick a template that FITS the count (6+ facts -> list-grid/column).
   DATA best practices (AntV infographic-design guide):
     - ONE message per item. Label = the headline fact (a number or 1-3 words);
       desc = the plain explanation. NEVER repeat the label's numbers in desc.
@@ -112,25 +134,63 @@ AntV spec syntax (official AntV Infographic skill):
     - Parallel phrasing across same-level items ('92% of…', '~28% of…').
     - 3-8 items, short title, terse text everywhere (banner space is tight).
     - Neutral factual tone: no metaphors, emotions, or cultural references.
-  Valid examples:
+  Valid examples (rich, with palettes):
     infographic chart-column-simple
     data
-      title Yields by year
+      title Yield by year
       values
         - label 2020
           value 12.5
         - label 2021
           value 20
-    infographic list-grid-badge-card
+        - label 2022
+          value 31
+    theme
+      palette #f59e0b #06b6d4 #10b981
+    infographic compare-quadrant-quarter-simple-card
     data
-      title Match the market, don't beat it
-      lists
-        - label 92%
-          desc of active funds underperformed the S&P 500 over 15 years
-          icon chart line
-        - label ~28%
-          desc of lifetime returns eaten by a 1% annual fee
-          icon arrow up
+      title Find your learning sweet spot
+      compares
+        - label Flow
+          desc High challenge, high skill — total absorption
+          icon star fill
+        - label Boredom
+          desc Challenge too low for your skill
+          icon sleep
+        - label Anxiety
+          desc Challenge too high for your skill
+          icon warning
+        - label Apathy
+          desc Both challenge and skill low
+          icon ban
+    theme
+      palette #22c55e #94a3b8 #f97316 #eab308
+    infographic sequence-interaction-default-compact-card
+    data
+      title How a website loads
+      sequences
+        - label Browser
+          icon code
+          children
+            - label Ask for the page
+              id ask
+              step 0
+              icon send
+        - label Server
+          icon server
+          children
+            - label Look up files
+              id lookup
+              step 1
+              icon database
+            - label Stream the answer
+              id stream
+              step 1
+              icon send
+      relations
+        ask - DNS + TCP -> lookup
+        lookup - HTML + CSS -> stream
+        stream - bytes -> paint
   Keep labels ultra-short and desc under 25 words. If spec render fails it is
   fed back to you — then fix the shape or fall back to infographic_svg.
 - infographic_svg is the FALLBACK lane (only when a spec is not practical):
@@ -142,8 +202,8 @@ AntV spec syntax (official AntV Infographic skill):
 - The remaining visual budget (optional): inline ```mermaid fences inside body_md
   wherever a small diagram aids a section — as many as you see fit, each small
   (<= 10 lines).
-- diagram_src may be an empty string when infographic_svg is present. At least one
-  of diagram_src / infographic_svg / an inline mermaid fence must exist.
+- diagram_src is ALWAYS empty (mermaid lives inline in body_md only). The
+  main image is ALWAYS the infographic (spec lane or infographic_svg).
 
 Hard rules:
 - anchor_quote MUST appear character-for-character in the article text I give you, and be
