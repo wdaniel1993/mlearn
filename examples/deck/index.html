@@ -13,45 +13,66 @@
   .head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
   .head h1 { font-size:18px; margin:0; }
   .head span { color:var(--dim); font-size:13px; }
+  #bar { height:4px; background:var(--line); border-radius:2px; margin-bottom:12px; overflow:hidden; }
+  #bar i { display:block; height:100%; width:0%; background:#4a7fd4; transition:width .3s; }
+  .deck { position:relative; }
   .card { background:var(--panel); border:1px solid var(--line); border-radius:14px;
-          padding:18px; min-height:300px; position:relative; }
+          padding:18px; min-height:300px; position:relative; touch-action:pan-y;
+          user-select:none; -webkit-user-select:none; will-change:transform; }
+  .card.drag-r { border-color:#2e9b5f; }
+  .card.drag-l { border-color:#a8454e; }
+  .stamp { position:absolute; top:14%; left:0; right:0; margin:0 auto; width:170px;
+           text-align:center; font-size:40px; font-weight:900; letter-spacing:4px;
+           padding:6px 0; border:4px solid; border-radius:14px; background:rgba(10,12,16,.35);
+           opacity:0; transform:rotate(-14deg); z-index:4; pointer-events:none; }
+  .stamp.like { color:#2e9b5f; border-color:#2e9b5f; }
+  .stamp.nope { color:#a8454e; border-color:#a8454e; }
+  .stamp.show { opacity:1; }
   .card h2 { margin:0 0 4px; font-size:19px; }
   .chip { display:inline-block; background:#243044; color:#bcd3ff; border-radius:999px;
           padding:2px 10px; font-size:12px; margin-left:6px; }
   .hook { color:var(--dim); font-size:14px; margin:0 0 12px; }
   .banner { margin:12px 0; } .banner svg { width:100%; height:auto; }
   .body { font-size:15px; white-space:pre-wrap; }
+  .q { margin-top:12px; padding-top:10px; border-top:1px dashed var(--line); }
+  .q button { background:transparent; border:1px solid var(--line); color:var(--dim);
+              border-radius:8px; padding:4px 10px; cursor:pointer; font-size:12px; }
+  .q .ans { display:none; color:var(--dim); font-size:14px; margin-top:6px; white-space:pre-wrap; }
   .actions { display:flex; gap:10px; justify-content:center; margin-top:14px; }
   .actions button { flex:1; max-width:140px; padding:12px 0; border:1px solid var(--line);
           border-radius:12px; background:transparent; color:var(--fg); font-size:15px; cursor:pointer; }
   .actions button:hover { border-color:#6a7d9c; }
-  .done { color:var(--dim); text-align:center; margin-top:30px; }
+  .done { color:var(--dim); text-align:center; margin:30px 0; }
   .err { color:#e0777e; }
-  #bar { height:4px; background:var(--line); border-radius:2px; margin-bottom:12px; overflow:hidden; }
-  #bar i { display:block; height:100%; width:0%; background:#4a7fd4; transition:width .3s; }
 </style>
 </head>
 <body>
 <div id="app">
   <div class="head"><h1>mlearn · deck <span id="count"></span></h1></div>
   <div id="bar"><i id="barfill"></i></div>
-  <div class="card" id="card">
+  <div class="deck">
     <p class="err" id="status">loading…</p>
+    <span class="stamp like" id="stamp-like">LIKE</span>
+    <span class="stamp nope" id="stamp-nope">NOPE</span>
+    <div class="card" id="card">
+    </div>
   </div>
   <div class="actions">
     <button id="dislike">👎 Meh</button>
     <button id="skip">⏭ Skip</button>
     <button id="like">👍 Like</button>
   </div>
+  <p class="done" id="hint">swipe → like · swipe ← meh · swipe ↑ skip</p>
 </div>
 
 <script>
-// A minimal tinder-style consumer of the headless mlearn REST API.
-// Three calls are all a deck flow needs:
-//   GET  /cards?status=ready         -> the pool (FIFO)
-//   GET  /cards/{id}                 -> full card (svg banner, body)
+// A tinder-style consumer of the headless mlearn REST API — drag to swipe,
+// buttons as fallback (keyboard/accessibility). Three calls per card:
+//   GET  /cards?status=ready         -> the FIFO pool
+//   GET  /cards/{id}                 -> FULL card (svg banner, body, prompts)
 //   POST /decide {card_id, action}   -> feedback + consume (like|dislike|skip)
-const API = "http://127.0.0.1:8311";
+// Point at a different API host with ?api=http://host:port
+const API = new URLSearchParams(location.search).get("api") || "http://127.0.0.1:8311";
 let pool = [], idx = 0;
 
 async function j(url, opts) {
@@ -70,18 +91,31 @@ async function boot() {
 }
 
 async function show() {
-  if (idx >= pool.length) { pool = await j("/cards?status=ready"); pool.reverse(); idx = 0; if (!pool.length) { document.getElementById("card").innerHTML = '<p class="done">deck cleared 🎉</p>'; document.getElementById("barfill").style.width = "100%"; return; } }
+  if (idx >= pool.length) {
+    pool = await j("/cards?status=ready"); pool.reverse(); idx = 0;
+    if (!pool.length) { document.getElementById("card").innerHTML = '<p class="done">deck cleared 🎉</p>'; document.getElementById("barfill").style.width = "100%"; return; }
+  }
   const c = pool[idx];
   document.getElementById("barfill").style.width = (idx / pool.length * 100) + "%";
   const st = document.getElementById("status");
   try {
     const d = await j("/cards/" + c.id);
     st.textContent = "";
+    const qs = (d.prompts || []).map((p, i) =>
+      '<div class="q"><b>Q' + (i + 1) + '</b> <button data-a="a' + p.id + '">show answer</button>' +
+      '<div>' + esc(p.question) + '</div><div class="ans" id="a' + p.id + '">' + esc(p.answer || "") + '</div></div>').join("");
     document.getElementById("card").innerHTML =
-      "<h2>" + esc(d.title) + '<span class="chip">' + esc(d.topic || d.cluster_label || "?") + '</span><span class="chip">#' + d.id + '</span></h2>' +
+      "<h2>" + esc(d.title) + '<span class="chip">' + esc(d.topic || "?") + '</span><span class="chip">#' + d.id + '</span></h2>' +
       '<p class="hook">' + esc(d.hook || "") + "</p>" +
       (d.infographic_svg ? '<div class="banner">' + d.infographic_svg + "</div>" : "") +
-      '<div class="body">' + esc((d.body_md || "").slice(0, 1200)) + "</div>";
+      '<div class="body">' + esc((d.body_md || "").slice(0, 5000)) + "</div>" +
+      '<p class="meta">' + esc(d.anchor_quote || "") + "</p>" + qs;
+    document.getElementById("card").querySelectorAll("[data-a]").forEach(b =>
+      b.addEventListener("click", () => {
+        const a = document.getElementById(b.dataset.a);
+        a.style.display = a.style.display === "block" ? "none" : "block";
+        b.textContent = a.style.display === "block" ? "hide answer" : "show answer";
+      }));
   } catch (e) { st.textContent = "error: " + e.message; }
 }
 
@@ -93,6 +127,43 @@ async function decide(action) {
   catch (e) { document.getElementById("status").textContent = "decide failed: " + e.message; return; }
   idx += 1;
   show();
+}
+
+// ---- drag-to-swipe (mirrors the deck UX: follow finger, stamps light up,
+// fly out past the thresholds) ----
+const el = document.getElementById("card");
+let sx = null, sy = null, busy = false;
+el.addEventListener("pointerdown", e => { sx = e.clientX; sy = e.clientY; });
+el.addEventListener("pointermove", e => {
+  if (sx === null || busy) return;
+  const dx = e.clientX - sx, dy = e.clientY - sy;
+  el.style.transition = "none";
+  el.style.transform = "translate(" + dx * 0.5 + "px," + dy * 0.2 + "px) rotate(" + dx * 0.06 + "deg)";
+  if (dx > 20) { showStamp("like"); el.classList.add("drag-r"); el.classList.remove("drag-l"); }
+  else if (dx < -20) { showStamp("nope"); el.classList.add("drag-l"); el.classList.remove("drag-r"); }
+  else { hideStamps(); el.classList.remove("drag-r", "drag-l"); }
+});
+el.addEventListener("pointerup", e => {
+  if (sx === null) return;
+  if (e.target.closest("button")) { sx = sy = null; return; }
+  const dx = e.clientX - sx, dy = e.clientY - sy;
+  sx = sy = null;
+  hideStamps(); el.classList.remove("drag-r", "drag-l");
+  if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) fly(dx < 0 ? "dislike" : "like");
+  else if (dy < -60) fly("skip");
+  else { el.style.transition = "transform .22s ease"; el.style.transform = ""; setTimeout(() => el.style.transition = "", 240); }
+});
+function showStamp(kind) {
+  const like = document.getElementById("stamp-like"), nope = document.getElementById("stamp-nope");
+  like.classList.toggle("show", kind === "like"); nope.classList.toggle("show", kind === "nope");
+}
+function hideStamps() { document.getElementById("stamp-like").classList.remove("show"); document.getElementById("stamp-nope").classList.remove("show"); }
+function fly(action) {
+  busy = true;
+  el.style.transition = "transform .26s ease-out, opacity .26s ease-out, box-shadow .26s ease-out";
+  el.style.transform = action === "like" ? "translateX(130%) rotate(9deg)" : action === "dislike" ? "translateX(-130%) rotate(-9deg)" : "translateY(-130%) rotate(-4deg)";
+  el.style.opacity = "0";
+  setTimeout(() => { el.style.transition = ""; el.style.opacity = ""; busy = false; decide(action); }, 300);
 }
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));

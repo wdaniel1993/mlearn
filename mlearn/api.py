@@ -12,6 +12,7 @@ one move) — see examples/deck/ for a full consumer.
 from __future__ import annotations
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from . import config as config_mod
@@ -36,9 +37,19 @@ class DecideIn(BaseModel):
 
 
 def create_app(cfg: dict | None = None) -> FastAPI:
-    cfg = cfg or config_mod.resolve_paths(config_mod.load())
+    cfg = cfg if cfg is not None else config_mod.resolve_paths(config_mod.load())
     db_path = cfg["paths"]["db"]
     app = FastAPI(title="mlearn", version="0.3.0")
+    # Permissive CORS: the bind is localhost-only by default and the API is
+    # read-only except the three documented POSTs (grade/signal/decide) —
+    # this keeps static-file consumers (deck UIs, dashboards) working with
+    # zero proxy setup. Any tunnel/exposure is the operator's concern.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     def get_conn():
         conn = db_mod.connect(db_path)
