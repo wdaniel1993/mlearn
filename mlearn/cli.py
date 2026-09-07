@@ -36,16 +36,13 @@ def init(json_out: bool = typer.Option(False, "--json")):
     cfg = config_mod.resolve_paths(config_mod.load())
     conn = db_mod.connect(cfg["paths"]["db"])
     db_mod.init_db(conn)
-    # Topic catalog from config (name + guardrail per topic); falls back to
-    # the DEFAULT catalog when the config has no `topics:` section.
-    topic_cfg = cfg.get("topics") or []
-    labels = [t["name"] for t in topic_cfg] or db_mod.SEED_TOPICS
+    # Topic catalog from sources.yaml `topics:` (single source of truth since
+    # RFC 2026-09; falls back to the DEFAULT catalog when absent) — the wizard
+    # (`mlearn topic add`) appends here.
+    topics = config_mod.load_topics(cfg)
+    labels = [t["name"] for t in topics]
     cluster_ids = db_mod.ensure_seed_clusters(conn, labels)
-    sources = []
-    src_path = Path(cfg["paths"]["sources"])
-    if src_path.is_file():
-        with open(src_path) as f:
-            sources = (yaml.safe_load(f) or {}).get("sources", [])
+    sources = config_mod.load_sources_doc(cfg).get("sources", [])
     sync = db_mod.upsert_sources(conn, sources)
     for d in (cfg["paths"]["data_dir"], cfg["paths"]["raw_dir"], cfg["paths"]["cards_dir"]):
         Path(d).mkdir(parents=True, exist_ok=True)
@@ -154,19 +151,21 @@ def generate(count: int = typer.Option(12, "--count", min=1,
                                                 help="fetch new items first"),
              regenerate: bool = typer.Option(False, "--regenerate",
                                              help="archive ready pool and re-roll it"),
+             no_research: bool = typer.Option(False, "--no-research",
+                                              help="skip the quality-gated research pass"),
              workers: int = typer.Option(1, "--workers", envvar="MLEARN_WORKERS",
                                          min=1, max=8,
                                          help="parallel LLM workers (endpoint serves ~3x concurrently)"),
              json_out: bool = typer.Option(False, "--json")):
-    """Discovery pipeline: harvest -> dedupe -> generate -> validate -> enqueue.
-    Phase 2 allocation: round-robin over seed topics (bandit arrives in Phase 4)."""
+    """Discovery pipeline: harvest -> dedupe -> (research) -> generate -> validate -> enqueue."""
     cfg = config_mod.resolve_paths(config_mod.load())
     conn = db_mod.connect(cfg["paths"]["db"])
     db_mod.init_db(conn)
     result = generate_mod.run_generation(conn, cfg, count,
                                          do_harvest=harvest_items,
                                          regenerate=regenerate,
-                                         workers=workers)
+                                         workers=workers,
+                                         no_research=no_research)
     if json_out:
         _json_out(result)
     else:
@@ -342,6 +341,155 @@ def search(query: str = typer.Argument(...),
         print(f"{res['total']} matches")
         for h in res["cards"]:
             print(f"  #{h['id']} [{h['topic']}] {h['score']:.2f} {h['title']}")
+
+
+@app.command()
+def ingest(path: Path = typer.Argument(..., help="file or folder to mine for card material"),
+           topic: str = typer.Option(..., "--topic",
+                                     help="catalog topic label (items carry it directly)"),
+           ext: str = typer.Option(None, "--ext",
+                                   help="comma-separated extra extensions, e.g. .pdf,.docx"),
+           recursive: bool = typer.Option(True, "--recursive/--no-recursive"),
+           json_out: bool = typer.Option(False, "--json")):
+    """One-shot local ingestion: scan a path, create items NOW (no catalog entry)."""
+    from . import local as local_mod
+    cfg, conn = _load_runtime(json_out)
+    db_mod.init_db(conn)
+    exts = local_mod.DEFAULT_EXTS + tuple(
+        (e.strip().lower() if e.strip().startswith(".") else "." + e.strip().lower())
+        for e in (ext or "").split(",") if e.strip())
+    res = local_mod.ingest(conn, cfg, path, topic=topic, recursive=recursive, exts=exts)
+    if json_out:
+        _json_out({"path": str(path), **res})
+    else:
+        print(f"{str(path)}: +{res['new']} new, {res['updated']} updated, "
+              f"{res['skipped']} unchanged, {res['failed']} failed")
+        for r in res["reasons"][:10]:
+            print(f"  {r}")
+
+
+@app.command()
+def add_local(path: Path = typer.Argument(...,
+              help="file or folder registered as a persistent local source"),
+              topic: str = typer.Option(..., "--topic"),
+              ext: str = typer.Option(None, "--ext"),
+              recursive: bool = typer.Option(True, "--recursive/--no-recursive"),
+              json_out: bool = typer.Option(False, "--json")):
+    """Register a persistent local source in sources.yaml (harvest re-scans it)."""
+    from . import local as local_mod
+    cfg, conn = _load_runtime(json_out)
+    db_mod.init_db(conn)
+    src_path = Path(cfg["paths"]["sources"])
+    doc = yaml.safe_load(src_path.read_text()) if src_path.is_file() else {}
+    sources = doc.setdefault("sources", [])
+    url = local_mod.file_url(path)
+    if any(s.get("url") == url for s in sources):
+        print("already registered:", url)
+        return
+    exts = (local_mod.DEFAULT_EXTS + tuple(
+        (e.strip().lower() if e.strip().startswith(".") else "." + e.strip().lower())
+        for e in (ext or "").split(",") if e.strip()))
+    entry = {
+        "name": path.name or str(path),
+        "url": url,
+        "feed_url": None,
+        "topic": topic,
+        "status": "probation",
+        "kind": "local",
+        "notes": "local content source (RFC 2026-09)",
+        "meta": {"ext": list(exts), "recursive": recursive},
+    }
+    sources.append(entry)
+    src_path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True))
+    db_mod.upsert_sources(conn, [entry], prune=False)
+    res = local_mod.ingest(conn, cfg, path, topic=topic,
+                           source_id=conn.execute(
+                               "SELECT id FROM sources WHERE url = ?", (url,)).fetchone()["id"],
+                           recursive=recursive, exts=exts)
+    if json_out:
+        _json_out({"src": url, "topic": topic, **res})
+    else:
+        print(f"registered local source: {path} (topic {topic})")
+        print(f"  first scan: +{res['new']} new, {res['updated']} updated, "
+              f"{res['failed']} failed")
+
+
+@app.command()
+def topic(action: str = typer.Argument(...,
+             help="add — propose + validate + preview a new catalog topic"),
+         phrase: str = typer.Argument(None, help="user wording of the new topic"),
+         dry_run: bool = typer.Option(False, "--dry-run",
+                                      help="print the LLM proposal, touch nothing"),
+         yes: bool = typer.Option(False, "--yes",
+                                  help="skip the confirmation prompt (validation still runs)"),
+         json_out: bool = typer.Option(False, "--json")):
+    """New-category wizard: LLM proposes title + guardrail + sources."""
+    from . import topic as topic_mod
+    if action != "add" or not phrase:
+        raise typer.BadParameter("usage: mlearn topic add \"<phrase>\" [--dry-run|--yes]")
+    cfg = config_mod.resolve_paths(config_mod.load())
+    try:
+        proposal = topic_mod.propose(cfg, phrase)
+        errors = topic_mod.validate(cfg, proposal, check_network=not dry_run)
+    except Exception as e:
+        if json_out:
+            _json_out({"ok": False, "error": str(e)})
+        else:
+            print(f"proposal failed: {e}")
+        raise typer.Exit(1)
+    if errors:
+        if json_out:
+            _json_out({"ok": False, "errors": errors, "proposal": proposal})
+        else:
+            print("validation failed:")
+            for e in errors:
+                print(f"  - {e}")
+        raise typer.Exit(1)
+    if dry_run:
+        print(topic_mod.pretty(proposal))
+        print("\n[dry-run] nothing written.")
+        return
+    if not yes:
+        print(topic_mod.pretty(proposal))
+        if input("\napply this catalog entry? [y/N] ").strip().lower() not in ("y", "yes"):
+            print("aborted.")
+            return
+    result = topic_mod.apply(cfg, proposal)
+    if json_out:
+        _json_out({"ok": True, **result})
+    else:
+        print(f"added topic {result['topic']} (cluster {result['cluster_id']}), "
+              f"{result['sources_added']} source(s) added, "
+              f"{result['sources_skipped']} already present")
+
+
+@app.command()
+def research(item_id: int = typer.Argument(..., help="item id (the candidate)"),
+             provider: str = typer.Option("corpus", "--provider",
+                                          help="corpus (default) | web"),
+             json_out: bool = typer.Option(False, "--json")):
+    """Quality-gated research pass for one candidate item: reports whether
+    research is NEEDED (thin primary material) and the context/links."""
+    from . import research as research_mod
+    cfg, conn = _load_runtime(json_out)
+    item = conn.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if item is None:
+        print(f"no item {item_id}")
+        raise typer.Exit(1)
+    res = research_mod.research(conn, cfg, dict(item), provider=provider)
+    if json_out:
+        _json_out(res)
+    else:
+        text = research_mod.generate_mod.item_text(item["raw_path"], item["title"])
+        w, h, b = research_mod.detail_score(text)
+        print(f"item {item_id} {item['title']!r}: {w} words, {h} headings, {b} blocks")
+        print(f"research needed: {res['needed']} "
+              f"(detailed threshold: {research_mod.DETAIL_WORDS} words + "
+              f"{research_mod.DETAIL_SECTIONS} sections/{research_mod.DETAIL_BLOCKS} blocks)")
+        for c in res["context"]:
+            print(f"  context: #{c['id']} {c['title']} ({c['url']})")
+        for l in res["links"]:
+            print(f"  link: {l['title']} ({l['url']})")
 
 
 @app.command()

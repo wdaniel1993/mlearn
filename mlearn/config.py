@@ -36,6 +36,10 @@ DEFAULTS: dict = {
     },
     "embed": {"provider": "local", "model": "BAAI/bge-small-en-v1.5"},
     "api": {"host": "127.0.0.1", "port": 8311},
+    # Research pass (RFC 2026-09): automatic but quality-gated. provider
+    # corpus = zero-network (own items + Wikipedia API for links); web =
+    # on-demand search provider. context: max synthesis sources (<= 3).
+    "research": {"provider": "corpus", "context": 3, "links": 3},
     # Topic catalog = the initial clusters (seed topics). Each entry carries
     # the LLM guardrail for that topic. Operators can add, remove, or rename
     # topics here; generation, seeding, and round-robin allocation follow
@@ -127,3 +131,28 @@ def resolve_paths(cfg: dict) -> dict:
             paths[key] = str(base / val)
     out["paths"] = paths
     return out
+
+
+def load_sources_doc(cfg: dict) -> dict:
+    """sources.yaml document (topics catalog + source allowlist)."""
+    p = Path(cfg["paths"]["sources"])
+    if p.is_file():
+        try:
+            return yaml.safe_load(p.read_text()) or {}
+        except Exception:
+            return {}
+    return {}
+
+
+def load_topics(cfg: dict) -> list[dict]:
+    """Topic catalog = sources.yaml `topics:` (single source of truth since
+    RFC 2026-09). Precedence: sources.yaml topics (non-empty) -> legacy
+    config.yaml `topics:` override -> DEFAULT catalog. Cached on cfg so
+    per-card guardrail lookups don't re-read the file."""
+    cached = cfg.get("_topics")
+    if cached is not None:
+        return cached
+    doc = load_sources_doc(cfg)
+    topics = doc.get("topics") or cfg.get("topics") or DEFAULTS.get("topics") or []
+    cfg["_topics"] = topics
+    return topics

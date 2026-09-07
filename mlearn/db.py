@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import DEFAULTS as _DEFAULTS
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -116,6 +116,25 @@ CREATE TABLE IF NOT EXISTS signals (
   created_at    TEXT NOT NULL
 );
 
+-- Multi-source references (RFC 2026-09, schema v2): what a card CONSIDERED.
+-- role: primary (the anchor item) | context (synthesis input, <= 3).
+CREATE TABLE IF NOT EXISTS card_items (
+  card_id       INTEGER NOT NULL REFERENCES cards(id),
+  item_id       INTEGER NOT NULL REFERENCES items(id),
+  role          TEXT NOT NULL,
+  ord           INTEGER NOT NULL,
+  PRIMARY KEY (card_id, item_id)
+);
+
+-- Further reading for the reader: web URLs or local file links only.
+CREATE TABLE IF NOT EXISTS card_links (
+  id            INTEGER PRIMARY KEY,
+  card_id       INTEGER NOT NULL REFERENCES cards(id),
+  url           TEXT NOT NULL,
+  title         TEXT NOT NULL,
+  ord           INTEGER NOT NULL
+);
+
 -- Single-row EMA interest vector.
 CREATE TABLE IF NOT EXISTS profile (
   id            INTEGER PRIMARY KEY CHECK (id = 1),
@@ -171,6 +190,16 @@ def init_db(conn: sqlite3.Connection) -> None:
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(sources)").fetchall()}
     if "meta" not in cols:
         conn.execute("ALTER TABLE sources ADD COLUMN meta TEXT")
+    if "kind" not in cols:
+        conn.execute(
+            "ALTER TABLE sources ADD COLUMN kind TEXT NOT NULL DEFAULT 'rss'")
+    # legacy rows carried kind inside meta.json — promote it into the column
+    conn.execute(
+        """UPDATE sources SET kind = 'wikipedia' WHERE kind = 'rss' AND meta IS NOT NULL
+           AND json_extract(meta, '$.kind') = 'wikipedia'""")
+    icols = {r["name"] for r in conn.execute("PRAGMA table_info(items)").fetchall()}
+    if "topic" not in icols:
+        conn.execute("ALTER TABLE items ADD COLUMN topic TEXT")
     ccols = {r["name"] for r in conn.execute("PRAGMA table_info(cards)").fetchall()}
     if "infographic_svg" not in ccols:
         conn.execute("ALTER TABLE cards ADD COLUMN infographic_svg TEXT")
@@ -180,6 +209,12 @@ def init_db(conn: sqlite3.Connection) -> None:
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+    elif row["version"] != SCHEMA_VERSION:
+        conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
+    # schema v2 backfill: existing cards reference their anchor item as primary
+    conn.execute(
+        """INSERT OR IGNORE INTO card_items (card_id, item_id, role, ord)
+           SELECT id, item_id, 'primary', 0 FROM cards WHERE item_id IS NOT NULL""")
     conn.execute(
         "INSERT OR IGNORE INTO profile (id, vector, updated_at) VALUES (1, NULL, ?)",
         (utcnow(),),
@@ -205,7 +240,7 @@ def ensure_seed_clusters(conn: sqlite3.Connection, labels: list[str] | None = No
     return created
 
 
-def upsert_sources(conn: sqlite3.Connection, sources: list[dict]) -> dict:
+def upsert_sources(conn: sqlite3.Connection, sources: list[dict], prune: bool = True) -> dict:
     """Sync sources.yaml into the sources table (keyed by url). Counters
     (cards_served, grade_sum) are preserved across syncs.
 
@@ -215,39 +250,47 @@ def upsert_sources(conn: sqlite3.Connection, sources: list[dict]) -> dict:
     added = updated = removed = retired = 0
     for s in sources:
         existing = conn.execute("SELECT id FROM sources WHERE url = ?", (s["url"],)).fetchone()
-        meta = json.dumps(s.get("meta")) if isinstance(s.get("meta"), dict) else None
+        meta = json.loads(s.get("meta")) if isinstance(s.get("meta"), str) else s.get("meta")
+        meta = meta if isinstance(meta, dict) else None
+        meta_json = json.dumps(meta) if meta else None
+        # kind: explicit key wins; legacy sources carry kind inside meta
+        kind = s.get("kind") or (meta.get("kind") if meta and meta.get("kind")
+                                 in ("wikipedia", "local") else "rss")
         if existing is None:
             conn.execute(
-                """INSERT INTO sources (name, url, feed_url, topic, status, added_at, notes, meta)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO sources (name, url, feed_url, topic, status, added_at, notes, meta, kind)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (s["name"], s["url"], s.get("feed_url"), s["topic"],
-                 s.get("status", "candidate"), utcnow(), s.get("notes"), meta),
+                 s.get("status", "candidate"), utcnow(), s.get("notes"), meta_json,
+                 kind),
             )
             added += 1
         else:
             conn.execute(
-                """UPDATE sources SET name=?, feed_url=?, topic=?, status=?, notes=?, meta=?
+                """UPDATE sources SET name=?, feed_url=?, topic=?, status=?, notes=?, meta=?, kind=?
                    WHERE url = ?""",
                 (s["name"], s.get("feed_url"), s["topic"],
-                 s.get("status", "candidate"), s.get("notes"), meta, s["url"]),
+                 s.get("status", "candidate"), s.get("notes"), meta_json,
+                 kind, s["url"]),
             )
             updated += 1
     yaml_urls = {s["url"] for s in sources}
-    for row in conn.execute("SELECT * FROM sources"):
-        if row["url"] in yaml_urls:
-            continue
-        has_history = conn.execute(
-            "SELECT 1 FROM items WHERE source_id = ? LIMIT 1", (row["id"],)
-        ).fetchone() is not None
-        if has_history:
-            conn.execute(
-                "UPDATE sources SET status = 'retired', feed_url = NULL WHERE id = ?",
-                (row["id"],),
-            )
-            retired += 1
-        else:
-            conn.execute("DELETE FROM sources WHERE id = ?", (row["id"],))
-            removed += 1
+    if prune:
+        for row in conn.execute("SELECT * FROM sources"):
+            if row["url"] in yaml_urls:
+                continue
+            has_history = conn.execute(
+                "SELECT 1 FROM items WHERE source_id = ? LIMIT 1", (row["id"],)
+            ).fetchone() is not None
+            if has_history:
+                conn.execute(
+                    "UPDATE sources SET status = 'retired', feed_url = NULL WHERE id = ?",
+                    (row["id"],),
+                )
+                retired += 1
+            else:
+                conn.execute("DELETE FROM sources WHERE id = ?", (row["id"],))
+                removed += 1
     conn.commit()
     return {"added": added, "updated": updated, "removed": removed, "retired": retired}
 
@@ -258,16 +301,16 @@ def cluster_by_label(conn: sqlite3.Connection, label: str) -> sqlite3.Row | None
 
 def insert_item(conn: sqlite3.Connection, *, url: str, title: str | None,
                 source_id: int | None, content_hash: str, published_at: str | None = None,
-                raw_path: str | None = None) -> int:
+                raw_path: str | None = None, topic: str | None = None) -> int:
     """INSERT OR IGNORE on url; returns the item id (new or existing)."""
     row = conn.execute("SELECT id FROM items WHERE url = ?", (url,)).fetchone()
     if row is not None:
         return row["id"]
     cur = conn.execute(
         """INSERT INTO items (source_id, url, title, published_at, fetched_at,
-                              content_hash, raw_path, processed)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
-        (source_id, url, title, published_at, utcnow(), content_hash, raw_path),
+                              content_hash, raw_path, processed, topic)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
+        (source_id, url, title, published_at, utcnow(), content_hash, raw_path, topic),
     )
     conn.commit()
     assert cur.lastrowid is not None
@@ -280,8 +323,15 @@ def insert_card(conn: sqlite3.Connection, *, item_id: int | None, cluster_label:
                 figures_json: str | None,
                 source_url: str, anchor_quote: str,
                 embedding: bytes | None = None, is_wildcard: bool = False,
-                prompts: list[dict] | None = None) -> int:
-    """Insert a card plus its recall prompts. Status starts 'ready'."""
+                prompts: list[dict] | None = None,
+                context_item_ids: list[int] | None = None,
+                further_reading: list[dict] | None = None) -> int:
+    """Insert a card plus its recall prompts. Status starts 'ready'.
+
+    context_item_ids: additional items the card considered (card_items,
+    role 'context' — never include the primary item_id, it is written as
+    role 'primary' automatically). further_reading: web/local links
+    ({url, title}, at most 3)."""
     cluster = cluster_by_label(conn, cluster_label)
     if cluster is None:
         raise ValueError(f"unknown cluster label: {cluster_label}")
@@ -296,6 +346,23 @@ def insert_card(conn: sqlite3.Connection, *, item_id: int | None, cluster_label:
     )
     assert cur.lastrowid is not None
     card_id = cur.lastrowid
+    if item_id is not None:
+        conn.execute(
+            """INSERT OR IGNORE INTO card_items (card_id, item_id, role, ord)
+               VALUES (?, ?, 'primary', 0)""", (card_id, item_id))
+    for n, cid in enumerate(dict.fromkeys(context_item_ids or [])):
+        if cid == item_id:
+            continue
+        conn.execute(
+            """INSERT OR IGNORE INTO card_items (card_id, item_id, role, ord)
+               VALUES (?, ?, 'context', ?)""", (card_id, cid, n + 1))
+    for n, link in enumerate((further_reading or [])[:3]):
+        url = str(link.get("url") or "").strip()
+        title = str(link.get("title") or "").strip()
+        if url and title:
+            conn.execute(
+                "INSERT INTO card_links (card_id, url, title, ord) VALUES (?, ?, ?, ?)",
+                (card_id, url, title, n))
     for p in prompts or []:
         conn.execute(
             "INSERT INTO prompts (card_id, question, answer) VALUES (?, ?, ?)",

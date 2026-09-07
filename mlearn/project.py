@@ -19,7 +19,9 @@ def slugify(title: str) -> str:
 
 
 def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row],
-                infographic_name: str | None = None) -> str:
+                infographic_name: str | None = None,
+                references: list[sqlite3.Row] | None = None,
+                links: list[sqlite3.Row] | None = None) -> str:
     frontmatter = {
         "id": card["id"],
         "title": card["title"],
@@ -47,13 +49,22 @@ def render_card(card: sqlite3.Row, prompts: list[sqlite3.Row],
         md.append("")
     md.append(card["body_md"].rstrip())
     md.append("")
+    md.append("### Sources")
+    md.append(f"- Primary: [{card['source_url']}]({card['source_url']})")
+    for r in (references or []):
+        if str(r["role"]) != "primary":
+            md.append(f"- Considered: [{r['title'] or r['url']}]({r['url']})")
+    md.append("")
+    if links:
+        md.append("### Further reading")
+        for l in links:
+            md.append(f"- [{l['title']}]({l['url']})")
+        md.append("")
     md.append("---")
     md.append("### Recall")
     for i, p in enumerate(prompts, 1):
         md.append(f"{i}. **Q:** {p['question']}")
         md.append(f"   **A:** {p['answer']}")
-    md.append("")
-    md.append(f"[Source]({card['source_url']})")
     md.append("")
     return "\n".join(md)
 
@@ -88,7 +99,17 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
             inf_name = f"{stem}_infographic.svg"
             (topic_dir / inf_name).write_text(card["infographic_svg"], encoding="utf-8")
             expected.add(topic_dir / inf_name)
-        path.write_text(render_card(card, prompts, inf_name), encoding="utf-8")
+        refs = conn.execute(
+            """SELECT ci.role, i.title, i.url FROM card_items ci
+               JOIN items i ON i.id = ci.item_id
+               WHERE ci.card_id = ? ORDER BY ci.ord""", (card["id"],)
+        ).fetchall()
+        links = conn.execute(
+            "SELECT url, title FROM card_links WHERE card_id = ? ORDER BY ord",
+            (card["id"],)
+        ).fetchall()
+        path.write_text(render_card(card, prompts, inf_name, refs, links),
+                        encoding="utf-8")
         expected.add(path)
         written.append(path)
     _prune_stale(cards_dir, expected)

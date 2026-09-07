@@ -261,7 +261,29 @@ def harvest(conn, cfg: dict) -> dict:
                 meta = json.loads(src["meta"])
             except ValueError:
                 meta = None
-        if meta and meta.get("kind") == "wikipedia":
+        kind = (src["kind"] if "kind" in src.keys() else None) or "rss"
+        meta_kind = (meta or {}).get("kind")
+        if meta_kind in ("wikipedia", "local"):
+            kind = meta_kind  # legacy rows: kind lived in meta
+        if kind == "local":
+            from . import local as local_mod
+            url = src["url"]
+            if not url.startswith("file://"):
+                reasons.append(f"{src['name']}: local source url must be file:// (got {url})")
+                continue
+            path = Path(url[len("file://"):])
+            exts = tuple((meta or {}).get("ext") or local_mod.DEFAULT_EXTS)
+            ignore = tuple((meta or {}).get("ignore") or ())
+            recursive = bool((meta or {}).get("recursive", True))
+            res = local_mod.ingest(conn, cfg, path, topic=src["topic"],
+                                   source_id=src["id"], recursive=recursive,
+                                   exts=exts, ignore=ignore)
+            new_items += res["new"]
+            skipped += res["skipped"]
+            failed += res["failed"]
+            reasons.extend(res["reasons"])
+            continue
+        if kind == "wikipedia":
             # Public-API source: no robots gate (see WIKI_API note), own fetcher.
             wiki_items, wiki_errs = _wiki_items(src, raw_dir, conn)
             reasons.extend(wiki_errs)

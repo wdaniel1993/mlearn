@@ -9,9 +9,15 @@ from mlearn import db as db_mod
 from mlearn import generate as gen_mod
 
 
-def _cfg_with_topics(topics):
+def _cfg_with_topics(topics, tmp_path=None):
     cfg = config_mod.DEFAULTS.copy()
     cfg["topics"] = topics
+    if tmp_path is not None:
+        # isolated catalog: no real sources.yaml may shadow the legacy override
+        cfg["_base_dir"] = str(tmp_path)
+        paths = dict(cfg["paths"])
+        paths["sources"] = str(tmp_path / "sources.yaml")
+        cfg["paths"] = paths
     return cfg
 
 
@@ -38,22 +44,23 @@ def test_custom_catalog_seeds_exactly_those_clusters(tmp_path):
     assert "technology" not in got
 
 
-def test_topic_guardrail_uses_custom_catalog():
+def test_topic_guardrail_uses_custom_catalog(tmp_path):
     cfg = _cfg_with_topics([
         {"name": "astronomy", "guardrail": "Topic astronomy — explain celestial mechanics."},
-    ])
+    ], tmp_path)
     assert "celestial mechanics" in gen_mod.topic_guardrail(cfg, "astronomy")
 
 
-def test_unknown_topic_gets_generic_guardrail():
-    cfg = _cfg_with_topics([{"name": "astronomy", "guardrail": "specific"}])
+def test_unknown_topic_gets_generic_guardrail(tmp_path):
+    cfg = _cfg_with_topics([{"name": "astronomy", "guardrail": "specific"}], tmp_path)
     guard = gen_mod.topic_guardrail(cfg, "physics")
     assert guard == gen_mod.GENERIC_GUARDRAIL
     assert "mechanism" in guard
 
 
-def test_build_system_embeds_custom_guardrail():
-    cfg = _cfg_with_topics([{"name": "astronomy", "guardrail": "explain celestial mechanics"}])
+def test_build_system_embeds_custom_guardrail(tmp_path):
+    cfg = _cfg_with_topics([{"name": "astronomy", "guardrail": "explain celestial mechanics"}],
+                           tmp_path)
     sys_out = gen_mod.build_system(cfg, "astronomy")
     assert "explain celestial mechanics" in sys_out
     assert "{TGUARD}" not in sys_out

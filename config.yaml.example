@@ -55,12 +55,12 @@ api:
   port: 8311
 
 # --- Topic catalog (the top-level categories) ---
-# The initial clusters are born from this list; generation guardrails and the
-# round-robin allocation follow it. Add / remove / rename freely — a fresh
-# `mlearn init` seeds exactly these. Any topic NOT listed here gets the
-# generic mechanism guardrail (and clusters born later via the wildcard arm
-# are handled the same way). Omitting the section uses the built-in defaults
-# (see mlearn/config.py DEFAULTS["topics"]).
+# The catalog moved to sources.yaml (`topics:` section — single source of
+# truth since RFC 2026-09): names seed the initial clusters, guardrails steer
+# generation, and `mlearn topic add "<phrase>"` appends new topics with an
+# LLM-proposed title/guardrail/seed sources. The legacy `topics:` block below
+# is still honored as a fallback when sources.yaml has no topics section, but
+# new deployments should keep the catalog in sources.yaml.
 topics:
   - name: self_improvement
     guardrail: >-

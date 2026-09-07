@@ -61,12 +61,20 @@ Every command supports `--json`.
 - **Provider** — any OpenAI-compatible endpoint (`generate.provider: local`
   with `base_url`, or `openrouter`). The API key is read from the env var in
   `generate.api_key_env`, with a fallback to a local `.env` file.
-- **Topic catalog** — `topics:` is a list of `{name, guardrail}` pairs: the
-  names seed the initial clusters, the guardrails steer the generation prompt
-  per topic, and the round-robin allocation follows the live cluster table.
-  Add / remove / rename freely; topics without a guardrail get a generic
-  mechanism-and-evidence instruction. Default catalog: technology, innovation,
-  finance, mental_health, self_improvement, psychology.
+- **Topic catalog** — lives in `sources.yaml` (`topics:` list of
+  `{name, guardrail, description}` pairs): the names seed the initial
+  clusters, the guardrails steer the generation prompt per topic, and the
+  round-robin allocation follows the live cluster table. Add new topics with
+  the wizard `mlearn topic add "<phrase>"` (LLM proposes title + guardrail +
+  seed sources; always previews before applying) or edit the file freely;
+  topics without a guardrail get a generic mechanism-and-evidence
+  instruction. Default catalog: technology, innovation, finance,
+  mental_health, self_improvement, psychology.
+- **Research pass** (`research.*`) — automatic, quality-gated: a candidate
+  item whose material is below the detail threshold (≥1500 words AND
+  structured) gets up to `context` (3) cross-source synthesis items from the
+  whole corpus plus up to `links` (3) title-verified Wikipedia links.
+  Disable per run with `mlearn generate --no-research`.
 - **Buffer / serving / taste / novelty knobs** — see the example file.
 
 ## Sources (the forkable commons)
@@ -78,7 +86,14 @@ Two source kinds:
 
 - **RSS feeds** — robots.txt-gated, ETag-cached. Trusted pop-science and
   mechanism sources (Quanta, Aeon, Psyche, IEEE Spectrum, Ars Technica, …).
-  Per-source topics must exist (or be added to) in the config topic catalog.
+  Per-source topics must exist (or be added to) in the topic catalog.
+- **Local content (kind: local)** — point the engine at files/folders:
+  `mlearn add-local <path> --topic X` registers a persistent local source
+  (harvest re-scans it), `mlearn ingest <path> --topic X` ingests once
+  without a catalog entry. Markdown/txt natively, docx/rtf/html via macOS
+  textutil, PDFs when pypdf is available. Ingested items carry their topic
+  directly and feed the same pipeline (and the research pass) like any
+  other source.
 - **Wikipedia (kind: wikipedia)** — stable concept pages via the public
   MediaWiki API (~1.2 s/page, 429 Retry-After honored; this kind intentionally
   bypasses the robots gate — the API is public infrastructure). Each entry
@@ -93,6 +108,11 @@ Two source kinds:
    pop-science items, names timeless ideas, and bridges each to a Wikipedia
    page. Discovery credit stays with the pop-science source. Reviewed ids are
    persisted (`data/prospect_state.json`) so nothing is re-reviewed.
+3. **Research pass** (`mlearn research <item_id>`) — quality-gated: thin
+   primary material triggers cross-source context synthesis (the whole
+   corpus, all source kinds) + title-verified further-reading links; the
+   card then cites `References` (considered items) and `Further reading`
+   (link list) in the API/export.
 
 Everything discovered still passes the full funnel: anchor gate, validation
 gates, topic guardrails, dedupe.

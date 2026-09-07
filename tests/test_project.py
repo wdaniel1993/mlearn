@@ -18,7 +18,8 @@ def test_render_card_structure(db):
     assert "```mermaid" in md and "```" in md.split("```mermaid", 1)[1]
     assert "### Recall" in md
     assert "**Q:**" in md and "**A:**" in md
-    assert "[Source](https://awealthofcommonsense.com" in md
+    assert "### Sources" in md
+    assert "[https://awealthofcommonsense.com" in md
     assert "> Why this matters:" in md
 
 

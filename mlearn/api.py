@@ -98,7 +98,18 @@ def create_app(cfg: dict | None = None) -> FastAPI:
             "SELECT id, question, answer, due_at, reps, lapses FROM prompts "
             "WHERE card_id = ? ORDER BY id", (card_id,)
         ).fetchall()
-        return {**dict(row), "prompts": [dict(p) for p in prompts]}
+        context = conn.execute(
+            """SELECT i.id AS item_id, i.title, i.url, ci.role
+               FROM card_items ci JOIN items i ON i.id = ci.item_id
+               WHERE ci.card_id = ? ORDER BY ci.ord, ci.role""", (card_id,)
+        ).fetchall()
+        links = conn.execute(
+            "SELECT url, title FROM card_links WHERE card_id = ? ORDER BY ord",
+            (card_id,)
+        ).fetchall()
+        return {**dict(row), "prompts": [dict(p) for p in prompts],
+                "references": [dict(r) for r in context],
+                "further_reading": [dict(l) for l in links]}
 
     @app.get("/next")
     def next_cards(count: int = 3, conn=Depends(get_conn)):

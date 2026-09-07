@@ -14,6 +14,7 @@ from pathlib import Path
 
 import httpx
 
+from . import config as config_mod
 from . import db as db_mod
 from . import embed as embed_mod
 from . import project as project_mod
@@ -38,8 +39,8 @@ GENERIC_GUARDRAIL = (
 
 
 def topic_guardrail(cfg: dict, topic: str) -> str:
-    """Per-topic LLM guardrail from the configurable topic catalog."""
-    for t in cfg.get("topics", []) or []:
+    """Per-topic LLM guardrail from the topic catalog (sources.yaml)."""
+    for t in config_mod.load_topics(cfg):
         if t.get("name") == topic and t.get("guardrail"):
             return t["guardrail"]
     return GENERIC_GUARDRAIL
@@ -82,8 +83,13 @@ The JSON must have exactly these keys:
   "infographic_svg": "optional hand-written SVG infographic (fallback lane only)",
   "figures": [{"value": <number>, "source": "<verbatim span from the article>"}],
   "anchor_quote": "verbatim span from the article, max 25 words",
+  "further_reading": [{"title": "clickable title", "url": "https://… or file://…"}],
   "prompts": [{"question": "...", "answer": "..."}]
 }
+
+further_reading: OPTIONAL, 0-3 links for the reader who wants DEEPER detail
+(web URLs or local file links ONLY; title + url; the links must actually exist
+and must be on-topic — never invent URLs).
 
 VISUAL RULE — exactly ONE main image per card:
 - The main image is ALWAYS the infographic: infographic_spec (AntV engine
@@ -305,6 +311,14 @@ ARTICLE TEXT (verbatim excerpt):
 {body}
 """
 
+CONTEXT_USER = """
+CONTEXT SOURCES (research material — SYNTHESIZE across them, do not just
+repeat one; every factual claim in the card must be supported by at least
+one of the context sources or the primary article; the anchor_quote MUST
+still come from the primary article):
+{context}
+"""
+
 RETRY_USER = """Your previous attempt failed validation. Fix EXACTLY these issues and
 resubmit the full card JSON (same schema). Do not change anything else needlessly.
 
@@ -463,11 +477,23 @@ def apply_infographic_lane(card: dict, tools_dir: str | Path) -> list[str]:
 
 
 def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
-                  attempts: int = MAX_RETRIES) -> tuple[dict | None, list[str]]:
+                  attempts: int = MAX_RETRIES,
+                  context: list[dict] | None = None) -> tuple[dict | None, list[str]]:
     """LLM card generation with validation-retry loop.
+    context: optional research items [{title, url, body}] the card may
+    synthesize from (<= 3); the anchor still validates against `body`.
     Returns (card dict, reasons); reasons = [] on success."""
     system = build_system(cfg, topic)
     user = USER.format(title=title, url=url, topic=topic, body=body) + _variety_note()
+    if context:
+        blocks = []
+        for i, c in enumerate(context[:3], 1):
+            cbody = " ".join(str(c.get("body") or "").split())
+            cbody = " ".join(cbody.split()[:MAX_BODY_WORDS_FOR_LLM])
+            blocks.append(
+                f"SOURCE {i} — {str(c.get('title') or '?')} ({str(c.get('url') or '?')}):\n"
+                f"{cbody}")
+        user += CONTEXT_USER.format(context="\n\n".join(blocks))
     previous = None
     errors: list[str] = []
     reasons: list[str] = []
@@ -525,11 +551,14 @@ def generate_card(cfg: dict, topic: str, title: str, url: str, body: str,
 
 
 def run_generation(conn, cfg: dict, count: int, do_harvest: bool = True,
-                   regenerate: bool = False, workers: int = 1) -> dict:
+                   regenerate: bool = False, workers: int = 1,
+                   no_research: bool = False) -> dict:
     """Phase-2 pipeline: dedupe -> generate -> validate -> enqueue.
     Allocation: round-robin over seed topics (bandit arrives in Phase 4).
     regenerate=True: archive the ready pool and re-roll it (prompt/style
     changes; old cards stay in the DB as history via status='archived').
+    no_research=True: skip the quality-gated research pass (thin material is
+    still made into a card without context/links — for tests/manual runs).
 
     A generation lock (fcntl flock) prevents concurrent runs (e.g. the
     hourly tick racing a manual run): two pipelines loading their dedupe
@@ -604,7 +633,8 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
 
         def _work(claim: dict):
             return generate_card(
-                cfg, claim["topic"], claim["title"], claim["url"], claim["body"])
+                cfg, claim["topic"], claim["title"], claim["url"], claim["body"],
+                context=claim.get("context"))
 
         with _cf.ThreadPoolExecutor(max_workers=max(1, min(workers, len(_claims)))) as ex:
             futs = {ex.submit(_work, c): c for c in _claims}
@@ -629,6 +659,9 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                     anchor_quote=card["anchor_quote"],
                     embedding=embed_mod.pack(claim["vec"]) if claim["vec"] else None,
                     prompts=card["prompts"], is_wildcard=claim["is_wc"],
+                    context_item_ids=claim.get("context_ids"),
+                    further_reading=(claim.get("research_links") or [])
+                                    + (card.get("further_reading") or []),
                 )
                 conn.execute(
                     "UPDATE items SET processed = 1 WHERE id = ?", (claim["id"],))
@@ -660,17 +693,18 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
             # (novelty.arm_birth), which is how new topics are born.
             if not wc_done and random.random() < wc_rate:
                 least = conn.execute(
-                    """SELECT s.topic AS topic, COUNT(c.id) AS n
-                       FROM sources s
-                       JOIN items i ON i.source_id = s.id AND i.processed = 0
+                    """SELECT COALESCE(i.topic, s.topic) AS topic, COUNT(c.id) AS n
+                       FROM items i
+                       LEFT JOIN sources s ON s.id = i.source_id
                        LEFT JOIN cards c ON c.item_id = i.id AND c.status != 'archived'
-                       GROUP BY s.topic ORDER BY n ASC, s.topic LIMIT 1"""
+                       WHERE i.processed = 0
+                       GROUP BY topic ORDER BY n ASC, topic LIMIT 1"""
                 ).fetchone()
                 if least is not None:
                     wc_item = conn.execute(
                         """SELECT i.* FROM items i
-                           JOIN sources s ON s.id = i.source_id
-                           WHERE i.processed = 0 AND s.topic = ?
+                           LEFT JOIN sources s ON s.id = i.source_id
+                           WHERE i.processed = 0 AND COALESCE(i.topic, s.topic) = ?
                            ORDER BY i.id LIMIT 1""", (least["topic"],),
                     ).fetchone()
                     if wc_item is not None:
@@ -689,8 +723,8 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                 # item becomes a card; send order stays FIFO (next_cards)
                 cands = conn.execute(
                     """SELECT i.* FROM items i
-                       JOIN sources s ON s.id = i.source_id
-                       WHERE i.processed = 0 AND s.topic = ?
+                       LEFT JOIN sources s ON s.id = i.source_id
+                       WHERE i.processed = 0 AND COALESCE(i.topic, s.topic) = ?
                        ORDER BY i.id""",
                     (topic,),
                 ).fetchall()
@@ -713,8 +747,8 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
             else:
                 item = conn.execute(
                     """SELECT i.* FROM items i
-                       JOIN sources s ON s.id = i.source_id
-                       WHERE i.processed = 0 AND s.topic = ?
+                       LEFT JOIN sources s ON s.id = i.source_id
+                       WHERE i.processed = 0 AND COALESCE(i.topic, s.topic) = ?
                        ORDER BY i.id LIMIT 1""",
                     (topic,),
                 ).fetchone()
@@ -738,11 +772,29 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                 continue
             body_for_llm = " ".join(text.split())
             body_for_llm = " ".join(body_for_llm.split()[:MAX_BODY_WORDS_FOR_LLM])
-            _claims.append({
+            claim = {
                 "id": item["id"], "topic": topic, "title": item["title"] or "",
                 "url": item["url"], "body": body_for_llm,
                 "vec": vec, "is_wc": is_wc,
-            })
+                "context": None, "context_ids": [],
+                "research_links": [],
+            }
+            if not no_research:
+                from . import research as research_mod
+                rres = research_mod.research(
+                    conn, cfg, item, primary_text=text,
+                    provider=cfg.get("research", {}).get("provider", "corpus"),
+                    context_limit=int(cfg.get("research", {}).get("context", 3)),
+                    link_count=int(cfg.get("research", {}).get("links", 3)))
+                if rres["needed"]:
+                    ctx = rres["context"]
+                    if ctx:
+                        claim["context"] = ctx
+                        claim["context_ids"] = [c["id"] for c in ctx]
+                        note(f"research: {item['title']!r}: +{len(ctx)} context "
+                             f"source(s), {len(rres['links'])} link(s)")
+                    claim["research_links"] = rres["links"]
+            _claims.append(claim)
             if len(_claims) >= workers:
                 _drain_claims()
         if _claims:

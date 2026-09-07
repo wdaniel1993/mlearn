@@ -337,6 +337,31 @@ def validate_card(card: dict, source_body: str, tools_dir: str | Path,
             "or 'Quad-Level Cell (QLC)'"
         )
 
+    links = card.get("further_reading") or []
+    if links:
+        if not isinstance(links, list) or not 1 <= len(links) <= 3:
+            errors.append("further reading (C8): must be a list of 1-3 entries "
+                          f"(got {len(links) if isinstance(links, list) else '?'})")
+        else:
+            seen: set[str] = set()
+            for i, link in enumerate(links):
+                if not isinstance(link, dict):
+                    errors.append(f"further reading (C8): entry {i + 1} is not an object")
+                    continue
+                url = str(link.get("url") or "").strip()
+                title = str(link.get("title") or "").strip()
+                if not (url.startswith("http://") or url.startswith("https://")
+                        or url.startswith("file://")):
+                    errors.append(f"further reading (C8): entry {i + 1} url must be "
+                                  f"http(s) or file:// ({url[:60]!r})")
+                if not title:
+                    errors.append(f"further reading (C8): entry {i + 1} needs a title")
+                if len(title) > 120:
+                    errors.append(f"further reading (C8): entry {i + 1} title too long")
+                if url in seen:
+                    errors.append(f"further reading (C8): duplicate url {url[:60]!r}")
+                seen.add(url)
+
     prompts = card.get("prompts") or []
     if len(prompts) < MIN_PROMPTS:
         errors.append(f"need >= {MIN_PROMPTS} prompts (got {len(prompts)})")

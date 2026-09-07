@@ -1,238 +1,234 @@
-# mlearn source allowlist — the shared, forkable commons.
-# status: candidate | probation | trusted | blacklisted
-# Fields: name, url, feed_url, topic, status, notes (optional)
-# Wikipedia sources: meta.kind = wikipedia, meta.pages = curated concept catalog,
-#   meta.lists = discovery via human-curated list articles ("List of …"),
-#   meta.discovery_budget = new concept candidates per list per harvest run.
-# Topics seed the initial clusters: self_improvement, mental_health,
-# innovation, technology, finance, psychology
-
 sources:
-  - name: Ars Technica
-    url: https://arstechnica.com
-    feed_url: https://feeds.arstechnica.com/arstechnica/index
-    topic: technology
-    status: trusted
-    notes: mechanisms of computing, systems, hardware
-
-  - name: IEEE Spectrum
-    url: https://spectrum.ieee.org
-    feed_url: https://spectrum.ieee.org/feeds/feed.rss
-    topic: technology
-    status: trusted
-    notes: engineering deep dives
-
-  - name: Quanta Magazine
-    url: https://www.quantamagazine.org
-    feed_url: https://www.quantamagazine.org/feed/
-    topic: innovation
-    status: trusted
-    notes: mathematics, physics, computer science — high mechanism density
-
-  - name: MIT Technology Review
-    url: https://www.technologyreview.com
-    feed_url: https://www.technologyreview.com/feed/
-    topic: innovation
-    status: trusted
-
-  - name: A Wealth of Common Sense
-    url: https://awealthofcommonsense.com
-    feed_url: https://awealthofcommonsense.com/feed/
-    topic: finance
-    status: trusted
-    notes: how markets and instruments work
-
-  - name: PsyBlog
-    url: https://www.spring.org.uk
-    feed_url: https://www.spring.org.uk/feed
-    topic: psychology
-    status: trusted
-    notes: psychology research summaries — mechanisms, not advice
-
-  - name: Ness Labs
-    url: https://nesslabs.com
-    feed_url: https://nesslabs.com/feed
-    topic: psychology
-    status: candidate
-    notes: neuroscience-informed essays on thinking and attention
-
-  - name: Psyche
-    url: https://psyche.co
-    feed_url: https://psyche.co/feed
-    topic: psychology
-    status: candidate
-    notes: essays on the human mind from psychology and philosophy
-
-  - name: Aeon
-    url: https://aeon.co
-    feed_url: https://aeon.co/feed
-    topic: psychology
-    status: candidate
-    notes: longform ideas on mind, society, and science
-
-  - name: NIMH News
-    url: https://www.nimh.nih.gov
-    feed_url: null
-    topic: mental_health
-    status: trusted
-    notes: RSS dead since 2026 site redesign; re-check periodically
-
-  - name: Farnam Street
-    url: https://fs.blog
-    feed_url: https://fs.blog/feed/
-    topic: self_improvement
-    status: probation
-    notes: primary accounts of practice; needs study/data anchor
-
-  - name: LessWrong
-    url: https://www.lesswrong.com
-    feed_url: https://www.lesswrong.com/feed.xml
-    topic: self_improvement
-    status: trusted
-    notes: rationality, evidence, cognition
-
-  # ---- Wikipedia — curated mechanism pages (kind: wikipedia uses the public
-  # MediaWiki API, ~1.2 s/page; sources.yaml is the shared catalog).
-  - name: Wikipedia · Technology
-    url: https://en.wikipedia.org?topic=technology
-    feed_url: null
-    topic: technology
-    status: probation
-    notes: stable concept and mechanism articles — models, layers, theorems
-    meta:
-      kind: wikipedia
-      pages:
-        - OSI model
-        - CAP theorem
-        - Finite-state machine
-        - Big O notation
-        - Moore's law
-        - Client–server model
-        - Solid-state drive
-        - Hash function
-        - Error correction code
-        - Ion thruster
-        - JPEG
-        - Radio telescope
-      lists:
-        - List of algorithms
-
-  - name: Wikipedia · Finance
-    url: https://en.wikipedia.org?topic=finance
-    feed_url: null
-    topic: finance
-    status: probation
-    notes: instruments, markets, and heuristics — mechanisms only
-    meta:
-      kind: wikipedia
-      pages:
-        - Yield curve
-        - Compound interest
-        - Time value of money
-        - Rule of 72
-        - Bond duration
-        - Index fund
-        - Arbitrage
-        - Fractional-reserve banking
-        - Behavioral economics
-        - Market liquidity
-        - Dollar-cost averaging
-        - Option (finance)
-      lists:
-        - List of economics topics
-
-  - name: Wikipedia · Mental Health
-    url: https://en.wikipedia.org?topic=mental_health
-    feed_url: null
-    topic: mental_health
-    status: probation
-    notes: mechanism and research only; never prescriptive
-    meta:
-      kind: wikipedia
-      pages:
-        - Sleep deprivation
-        - Circadian rhythm
-        - Neuroplasticity
-        - Hippocampus
-        - Memory consolidation
-        - Serotonin
-        - Prefrontal cortex
-        - Classical conditioning
-        - Operant conditioning
-        - Learned helplessness
-        - Cognitive dissonance
-        - Habituation
-      lists:
-        - Index of psychology articles
-
-  - name: Wikipedia · Self Improvement
-    url: https://en.wikipedia.org?topic=self_improvement
-    feed_url: null
-    topic: self_improvement
-    status: probation
-    notes: evidence-based mechanics of behavior — heuristics welcome
-    meta:
-      kind: wikipedia
-      pages:
-        - Deliberate practice
-        - Habit
-        - Flow (psychology)
-        - Metacognition
-        - Procrastination
-        - Goal setting
-        - Self-control
-        - Motivation
-        - Implementation intentions
-        - Parkinson's law
-        - Zeigarnik effect
-        - Dunning–Kruger effect
-      lists:
-        - List of eponymous laws
-
-  - name: Wikipedia · Innovation
-    url: https://en.wikipedia.org?topic=innovation
-    feed_url: null
-    topic: innovation
-    status: probation
-    notes: how innovation actually happens — models and effects
-    meta:
-      kind: wikipedia
-      pages:
-        - Diffusion of innovations
-        - Disruptive innovation
-        - Design thinking
-        - Open innovation
-        - Technology readiness level
-        - Business model
-        - Network effect
-        - Long tail
-        - Minimum viable product
-        - Technology acceptance model
-      lists:
-        - Index of innovation-related articles
-
-  - name: Wikipedia · Psychology
-    url: https://en.wikipedia.org?topic=psychology
-    feed_url: null
-    topic: psychology
-    status: probation
-    notes: curated concept catalog + list discovery — how the mind works
-    meta:
-      kind: wikipedia
-      pages:
-        - Cognitive bias
-        - Availability heuristic
-        - Confirmation bias
-        - Anchoring (cognitive bias)
-        - Halo effect
-        - Mere-exposure effect
-        - Fundamental attribution error
-        - Bystander effect
-        - Gambler's fallacy
-        - Illusory correlation
-        - Self-serving bias
-        - Planning fallacy
-      lists:
-        - List of cognitive biases
-        - List of effects
-        - List of memory biases
+- name: Ars Technica
+  url: https://arstechnica.com
+  feed_url: https://feeds.arstechnica.com/arstechnica/index
+  topic: technology
+  status: trusted
+  notes: mechanisms of computing, systems, hardware
+- name: IEEE Spectrum
+  url: https://spectrum.ieee.org
+  feed_url: https://spectrum.ieee.org/feeds/feed.rss
+  topic: technology
+  status: trusted
+  notes: engineering deep dives
+- name: Quanta Magazine
+  url: https://www.quantamagazine.org
+  feed_url: https://www.quantamagazine.org/feed/
+  topic: innovation
+  status: trusted
+  notes: mathematics, physics, computer science — high mechanism density
+- name: MIT Technology Review
+  url: https://www.technologyreview.com
+  feed_url: https://www.technologyreview.com/feed/
+  topic: innovation
+  status: trusted
+- name: A Wealth of Common Sense
+  url: https://awealthofcommonsense.com
+  feed_url: https://awealthofcommonsense.com/feed/
+  topic: finance
+  status: trusted
+  notes: how markets and instruments work
+- name: PsyBlog
+  url: https://www.spring.org.uk
+  feed_url: https://www.spring.org.uk/feed
+  topic: psychology
+  status: trusted
+  notes: psychology research summaries — mechanisms, not advice
+- name: Ness Labs
+  url: https://nesslabs.com
+  feed_url: https://nesslabs.com/feed
+  topic: psychology
+  status: candidate
+  notes: neuroscience-informed essays on thinking and attention
+- name: Psyche
+  url: https://psyche.co
+  feed_url: https://psyche.co/feed
+  topic: psychology
+  status: candidate
+  notes: essays on the human mind from psychology and philosophy
+- name: Aeon
+  url: https://aeon.co
+  feed_url: https://aeon.co/feed
+  topic: psychology
+  status: candidate
+  notes: longform ideas on mind, society, and science
+- name: NIMH News
+  url: https://www.nimh.nih.gov
+  feed_url: null
+  topic: mental_health
+  status: trusted
+  notes: RSS dead since 2026 site redesign; re-check periodically
+- name: Farnam Street
+  url: https://fs.blog
+  feed_url: https://fs.blog/feed/
+  topic: self_improvement
+  status: probation
+  notes: primary accounts of practice; needs study/data anchor
+- name: LessWrong
+  url: https://www.lesswrong.com
+  feed_url: https://www.lesswrong.com/feed.xml
+  topic: self_improvement
+  status: trusted
+  notes: rationality, evidence, cognition
+- name: Wikipedia · Technology
+  url: https://en.wikipedia.org?topic=technology
+  feed_url: null
+  topic: technology
+  status: probation
+  notes: stable concept and mechanism articles — models, layers, theorems
+  meta:
+    kind: wikipedia
+    pages:
+    - OSI model
+    - CAP theorem
+    - Finite-state machine
+    - Big O notation
+    - Moore's law
+    - Client–server model
+    - Solid-state drive
+    - Hash function
+    - Error correction code
+    - Ion thruster
+    - JPEG
+    - Radio telescope
+    lists:
+    - List of algorithms
+- name: Wikipedia · Finance
+  url: https://en.wikipedia.org?topic=finance
+  feed_url: null
+  topic: finance
+  status: probation
+  notes: instruments, markets, and heuristics — mechanisms only
+  meta:
+    kind: wikipedia
+    pages:
+    - Yield curve
+    - Compound interest
+    - Time value of money
+    - Rule of 72
+    - Bond duration
+    - Index fund
+    - Arbitrage
+    - Fractional-reserve banking
+    - Behavioral economics
+    - Market liquidity
+    - Dollar-cost averaging
+    - Option (finance)
+    lists:
+    - List of economics topics
+- name: Wikipedia · Mental Health
+  url: https://en.wikipedia.org?topic=mental_health
+  feed_url: null
+  topic: mental_health
+  status: probation
+  notes: mechanism and research only; never prescriptive
+  meta:
+    kind: wikipedia
+    pages:
+    - Sleep deprivation
+    - Circadian rhythm
+    - Neuroplasticity
+    - Hippocampus
+    - Memory consolidation
+    - Serotonin
+    - Prefrontal cortex
+    - Classical conditioning
+    - Operant conditioning
+    - Learned helplessness
+    - Cognitive dissonance
+    - Habituation
+    lists:
+    - Index of psychology articles
+- name: Wikipedia · Self Improvement
+  url: https://en.wikipedia.org?topic=self_improvement
+  feed_url: null
+  topic: self_improvement
+  status: probation
+  notes: evidence-based mechanics of behavior — heuristics welcome
+  meta:
+    kind: wikipedia
+    pages:
+    - Deliberate practice
+    - Habit
+    - Flow (psychology)
+    - Metacognition
+    - Procrastination
+    - Goal setting
+    - Self-control
+    - Motivation
+    - Implementation intentions
+    - Parkinson's law
+    - Zeigarnik effect
+    - Dunning–Kruger effect
+    lists:
+    - List of eponymous laws
+- name: Wikipedia · Innovation
+  url: https://en.wikipedia.org?topic=innovation
+  feed_url: null
+  topic: innovation
+  status: probation
+  notes: how innovation actually happens — models and effects
+  meta:
+    kind: wikipedia
+    pages:
+    - Diffusion of innovations
+    - Disruptive innovation
+    - Design thinking
+    - Open innovation
+    - Technology readiness level
+    - Business model
+    - Network effect
+    - Long tail
+    - Minimum viable product
+    - Technology acceptance model
+    lists:
+    - Index of innovation-related articles
+- name: Wikipedia · Psychology
+  url: https://en.wikipedia.org?topic=psychology
+  feed_url: null
+  topic: psychology
+  status: probation
+  notes: curated concept catalog + list discovery — how the mind works
+  meta:
+    kind: wikipedia
+    pages:
+    - Cognitive bias
+    - Availability heuristic
+    - Confirmation bias
+    - Anchoring (cognitive bias)
+    - Halo effect
+    - Mere-exposure effect
+    - Fundamental attribution error
+    - Bystander effect
+    - Gambler's fallacy
+    - Illusory correlation
+    - Self-serving bias
+    - Planning fallacy
+    lists:
+    - List of cognitive biases
+    - List of effects
+    - List of memory biases
+topics:
+- name: self_improvement
+  guardrail: Topic self_improvement — require a study, dataset, or primary account
+    in the article. Reject anything whose substance is exhortation (mere encouragement).
+- name: mental_health
+  guardrail: 'Topic mental_health — MECHANISM AND RESEARCH ONLY: explain mechanisms
+    and evidence (how sleep debt affects affect regulation, what a study found, how
+    it was designed). NEVER prescriptive (no ''do X to fix your anxiety''), never
+    framed as addressing the reader''s own condition, never diagnostic. If the article
+    can only be rendered as advice, refuse it.'
+- name: innovation
+  guardrail: Topic innovation — explain the mechanism behind the innovation or idea.
+- name: technology
+  guardrail: 'Topic technology — explain the mechanism of the technology: how it works,
+    why.'
+- name: finance
+  guardrail: Topic finance — how instruments, markets, and mechanisms work. NEVER
+    buy/sell/allocate guidance, never specific-security recommendations, no performance
+    projections.
+- name: psychology
+  guardrail: 'Topic psychology — how the mind works: mechanisms, biases, effects,
+    and their evidence. NEVER diagnostic, NEVER prescriptive: no therapy guidance,
+    no coping advice, no ''this means you'' claims. Describe the phenomenon and the
+    studies.'
