@@ -11,7 +11,6 @@ DEFAULTS: dict = {
     "buffer_floor": 8,
     "batch_size": 12,
     "daily_cap": 5,
-    "discovery_ratio": 0.7,
     "wildcard_rate": 0.15,
     "exploration_floor": 0.03,
     "dedupe_threshold": 0.92,
@@ -19,7 +18,6 @@ DEFAULTS: dict = {
     "decay_factor": 0.95,
     "probation_cards": 20,
     "max_probation_sources": 3,
-    "retention_target": 0.9,
     "paths": {
         "data_dir": "data",
         "raw_dir": "data/raw",

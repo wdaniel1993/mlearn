@@ -1,7 +1,7 @@
 """Visual QA gates for card diagrams (both the AntV banner and every inline
 mermaid fence). These run IN the pipeline after rendering and reject cards
-whose visuals would confuse a reader — the classes Daniel keeps catching in
-screenshots:
+whose visuals would confuse a reader — the classes that keep catching real
+regressions in screenshots:
 
 - banners that render bare numbers without any word labels
 - mermaid state diagrams used as causal chains (the 'planning fallacy' loop

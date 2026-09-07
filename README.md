@@ -2,9 +2,8 @@
 
 A headless microlearning engine. Discovers content from a curated source
 allowlist, generates visual 5-minute cards with recall prompts, schedules them
-for retention, and learns what to serve next from grade feedback.
-
-See `mlearn-spec.md` (build brief) for the full design.
+for retention (spaced repetition), and learns what to serve next from grade
+feedback.
 
 ## Principles
 
@@ -15,62 +14,76 @@ See `mlearn-spec.md` (build brief) for the full design.
 - **Every card carries a verbatim anchor quote from its source.** No anchor,
   no card.
 - **No invented numbers.** `diagram_type='data'` requires figures extracted
-  verbatim from the source. Diagrams must parse (mermaid gate) before a card
-  is stored.
-- **Core is headless.** No Telegram, no HTTP UI, no Hermes coupling in the
-  core package.
+  verbatim from the source. Diagrams must parse (mermaid gate) + pass visual
+  QA (banner icon refs, label legibility, causal-chain semantics) before a
+  card is stored.
+- **Core is headless.** No Telegram, no HTTP UI, no agent coupling in the
+  core package — any consumer (CLI, REST API, chat bot, web UI) can bind to it.
 - **Cards teach simple ideas.** 200-500 words, pyramid principle (takeaway
-  first), easy language for a busy ESL professional. Frameworks (OSI model,
-  ...) are enumerated in full; recall prompts probe the structure.
+  first), easy language for a busy professional reading in a second language.
+  Frameworks (OSI model, …) are enumerated in full; recall prompts probe the
+  structure.
+- **One main visual per card.** The hero image is an AntV-engine infographic
+  banner (declarative spec, icons, forced dark theme) with any number of
+  inline mermaid diagrams in the body. Every banner keeps its declarative
+  spec so it can be re-rendered or tweaked in place.
 
 ## Quickstart
 
 ```bash
 uv sync                 # or: uv pip install -e '.[fsrs,embed,api,test]'
+cp config.yaml.example config.yaml   # provider, paths, topic catalog
 mlearn init             # create db, load sources.yaml, seed topic clusters
-mlearn seed seeds/phase1_cards.json   # dev: ingest hand-written cards
-mlearn export           # regenerate markdown projection (Obsidian-compatible)
-mlearn scout            # candidate discovery + promotion pass
 mlearn harvest          # pull new items from the allowlist (feeds + Wikipedia)
-mlearn prospect --count 5   # pop-science -> timeless ideas -> Wikipedia bridge
-mlearn tick             # cron entry: refill the buffer if below floor
 mlearn generate --count 12   # LLM card batch (locked against concurrent runs)
-mlearn next --count 3   # MORNING push: pure discovery (ready cards only)
-mlearn due --count 5    # EVENING push: due recall prompts (spaced repetition)
-mlearn ack <prompt_id>  # acknowledge an evening reminder (due +1 day)
+mlearn export           # regenerate markdown projection (Obsidian-compatible)
+mlearn tick             # cron entry: refill the ready buffer if below floor
+mlearn next --count 3   # serve discovery cards (ready pool, FIFO)
+mlearn due --count 5    # serve due recall prompts (spaced repetition)
+mlearn ack <prompt_id>  # acknowledge a reminder (due +1 day)
 mlearn grade <prompt_id> <1-4>   # the only external write path
 mlearn signal <card_id> <kind>   # more_like_this|less_like_this|skip|discovery_open
-mlearn decide <card_id> <action> # tinder/deck mode: like|dislike|skip = feedback + consume
+mlearn decide <card_id> <action> # deck/tinder: like|dislike|skip = feedback + consume
+mlearn improve <ids> --scope banner|content|all [--note "…"]  # in-place polish
 mlearn search "query"   # semantic search over cards
 mlearn cards            # browse/paginate cards
 mlearn card <id>        # one card + its recall prompts
 mlearn stats            # buffer depth, cluster posteriors, grade dist
+mlearn api              # optional local read API (see examples/)
 ```
 
 Every command supports `--json`.
 
+## Configuration
+
+`config.yaml` (copy of `config.yaml.example`, gitignored) holds all knobs:
+
+- **Provider** — any OpenAI-compatible endpoint (`generate.provider: local`
+  with `base_url`, or `openrouter`). The API key is read from the env var in
+  `generate.api_key_env`, with a fallback to a local `.env` file.
+- **Topic catalog** — `topics:` is a list of `{name, guardrail}` pairs: the
+  names seed the initial clusters, the guardrails steer the generation prompt
+  per topic, and the round-robin allocation follows the live cluster table.
+  Add / remove / rename freely; topics without a guardrail get a generic
+  mechanism-and-evidence instruction. Default catalog: technology, innovation,
+  finance, mental_health, self_improvement, psychology.
+- **Buffer / serving / taste / novelty knobs** — see the example file.
+
 ## Sources (the forkable commons)
 
-` sources.yaml` is the shared allowlist. Topics seed clusters —
-**the topic catalog is configurable** (config.yaml `topics:`), each entry a
-`{name, guardrail}` pair: the names become the initial clusters, the
-guardrails steer the generation prompt for that topic, and the round-robin
-allocation follows the live cluster table (so wildcard-born clusters join
-the rotation automatically). Default catalog: **technology, innovation,
-finance, mental_health, self_improvement, psychology**. Topics not in the
-catalog (and born clusters without a guardrail) fall back to a generic
-mechanism-and-evidence guardrail. `mlearn init` seeds exactly the configured
-names; `config.yaml.example` shows the full section.
+`sources.yaml` is the shared allowlist — the part of the project meant to be
+forked, extended, and shared between operators.
 
 Two source kinds:
 
 - **RSS feeds** — robots.txt-gated, ETag-cached. Trusted pop-science and
-  mechanism sources (Quanta, Aeon, Psyche, IEEE Spectrum, Ars Technica, ...).
+  mechanism sources (Quanta, Aeon, Psyche, IEEE Spectrum, Ars Technica, …).
+  Per-source topics must exist (or be added to) in the config topic catalog.
 - **Wikipedia (kind: wikipedia)** — stable concept pages via the public
-  MediaWiki API (~1.2 s/page, 429 Retry-After honored; the API is public
-  infrastructure, so this kind intentionally bypasses the robots gate). Each
-  entry carries a curated `pages:` catalog and optional discovery `lists:`
-  (human-curated "List of ..." articles) — every harvest crawls up to
+  MediaWiki API (~1.2 s/page, 429 Retry-After honored; this kind intentionally
+  bypasses the robots gate — the API is public infrastructure). Each entry
+  carries a curated `pages:` catalog and optional discovery `lists:`
+  (human-curated "List of …" articles) — every harvest crawls up to
   `discovery_budget` (5) new concept pages per source, dedupe-aware.
 
 ### Concept discovery
@@ -79,66 +92,57 @@ Two source kinds:
 2. **Prospecting** (`mlearn prospect`) — the LLM reviews recent unprocessed
    pop-science items, names timeless ideas, and bridges each to a Wikipedia
    page. Discovery credit stays with the pop-science source. Reviewed ids are
-   persisted (`data/prospect_state.json`) so nothing is re-reviewed. Runs
-   daily with the Telegram push; `--count N` for manual passes.
+   persisted (`data/prospect_state.json`) so nothing is re-reviewed.
 
 Everything discovered still passes the full funnel: anchor gate, validation
 gates, topic guardrails, dedupe.
 
-## Build status
+## Integrations & examples
 
-- [x] Phase 1 — store and projection (init, seed, export; Obsidian + Mermaid verified)
-- [x] Phase 2 — pipeline (harvest, dedupe, generate, validate)
-- [x] Phase 3 — buffer and serving (tick, next, grade, FSRS)
-- [x] Phase 4 — recommender (Thompson sampling, EMA, decay, exploration floor)
-- [x] Phase 5 — novelty and scouting (wildcard slot, arm birth, probation)
-- [x] Phase 6 — interfaces (read API `mlearn api`, Hermes tool wrappers, Telegram
-  push cron, Hermes Control "Learn" tab)
-- [x] Content standard 2026-09 — 200-500 word pyramid cards for busy ESL professionals
-- [x] Concept discovery — Wikipedia list crawl + pop-science prospecting
-- [x] Psychology topic — seed cluster, guardrail, 5 sources (incl. Wikipedia catalog)
-- [x] Two-window day: morning discovery (hook + deep link; tap = implicit signal),
-      evening spaced repetition (`due` prompts with deep links)
-- [x] Visual lanes — the hero visual has a STRONG infographic preference: an
-      AntV engine-rendered banner via `infographic_spec` (icons, illustrations,
-      graphs; guided by the [infographic guidelines](docs/infographic-guidelines.md),
-      AntV design guide); mermaid only for branching/decision flows the spec
-      templates can't express; hand-written SVG as fallback; plus any number of
-      inline ```mermaid fences in the body; all gated, all zoomable in the app
-- [x] Granular taste — embedding-level, applied at ACQUISITION (which items become cards; like this *concept*, not this *category*); sending stays strict FIFO
-- [x] Deck mode — tinder-style FIFO swiping in the mini app: like/dislike/skip
-      = feedback + consumption (like schedules SR prompts; deck shrinks)
+The core is headless; consumers talk to it via the CLI or the local REST API
+(`mlearn api`, default 127.0.0.1:8311 — read-only plus the single `decide`
+write for deck UIs):
 
-41 tests. Generation runs on the local OpenAI-compatible endpoint
-(`deepseek-v4-flash` through opencode-go); a flock guard prevents concurrent
-generation runs (tick vs manual batch).
+- **[examples/deck/](examples/deck/)** — a self-contained, dependency-free
+  tinder-style "deck" UI (static HTML + JS): fetches `status=ready` cards,
+  shows one at a time, swipes/buttons emit `like|dislike|skip` via
+  `POST /api/mlearn/decide`. A ready-made template for chat-bot cards, smart
+  display UIs, or a Telegram mini app.
+- **[integrations/hermes/](integrations/hermes/)** — thin CLI wrappers usable
+  as agent tools or MCP tools (the reference integration that backs the deck).
 
-## Deployed on the Mac Mini
+Design docs: [docs/infographic-guidelines.md](docs/infographic-guidelines.md)
+(the hero-banner contract: AntV spec rules, visual QA gates, template
+selection).
 
-- **Morning push** 08:00 — `mlearn_push.py`: concept prospecting, then up to 5
-  discovery hooks, each with an inline **web_app button** (TR pattern:
-  `http://127.0.0.1:8088/?startapp=learn_<id>_disc`); tapping the
-  button opens the card in the app and counts as implicit positive
-  feedback (`discovery_open`)
-- **Evening push** 19:00 — `mlearn_retention.py`: up to 5 due recall prompts,
-  each with a `learn_<id>_ret` web_app button back to the card; sends are
-  acked (due +1 day), FSRS rescheduling happens via in-app grades
-- Hourly tick (buffer refill) — generation lock protected
-- Obsidian projection into `~/dev/private-notes/Learning/mlearn/cards/`
-  (pruned: only live cards are projected)
-- Hermes Control "Learn" tab: stats, search, endless browse, card subpages
-  with rendered markdown + mermaid (tap-to-enlarge lightbox) + labeled recall
-  grading + 👍/👎/skip signals
-- Read API: `mlearn api` on 127.0.0.1:8311
+## Status
+
+- [x] Store and projection (init, export; Obsidian-compatible markdown)
+- [x] Pipeline (harvest, dedupe, generate, validate, visual QA)
+- [x] Buffer and serving (tick, next, due, ack, grade — FSRS scheduling)
+- [x] Recommender (Thompson sampling over clusters, embedding-level taste,
+      decay, exploration floor)
+- [x] Novelty and scouting (wildcard slot, arm birth, source probation)
+- [x] Configurable topic catalog (seeds, guardrails, allocation)
+- [x] Interfaces (REST read API, agent tool wrappers, deck UI example)
+- [x] Visual lanes — infographic hero banners (AntV, declarative spec, icons)
+      + inline mermaid, all gated and QA'd; in-place `mlearn improve` polish
+      without archive/re-roll burn
+- [x] Two-window day: discovery surface (hook + deep link; tap = implicit
+      signal) and evening spaced repetition
+
+89 tests (`uv run pytest`). A flock guard prevents concurrent generation runs
+(tick vs manual batch). Generation needs any OpenAI-compatible chat endpoint
+(the example config ships with a local one).
 
 ## Layout
 
 ```
 mlearn/
 ├── mlearn/           # core package (headless)
-├── integrations/     # consumer adapters (hermes tool wrappers, …)
-├── seeds/            # hand-seeded phase-1 cards (validation fixtures)
-├── scripts/          # ops helpers (dup cleanup, spotchecks)
+├── integrations/     # consumer adapters (agent tool wrappers)
+├── examples/         # consumer examples (deck/tinder UI)
+├── docs/             # design docs (infographic contract, …)
 ├── sources.yaml      # the shared, forkable allowlist (commons)
 ├── data/             # gitignored: app.db, raw bodies, prospect state
 └── cards/            # gitignored: markdown projection

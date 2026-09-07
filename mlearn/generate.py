@@ -363,7 +363,8 @@ def call_llm(cfg: dict, system: str, user: str) -> str | None:
     gen = cfg["generate"]
     key = os.environ.get(gen.get("api_key_env", "OPENROUTER_API_KEY"), "")
     if not key:
-        # fallback: the Mac Mini automation .env (scripts export this var;
+        # fallback: a local .env next to the repo or the operator's automation
+        # .env (the CLI scripts export this var on their own)
         # interactive use should not depend on the shell)
         env_name = gen.get("api_key_env", "OPENROUTER_API_KEY")
         try:

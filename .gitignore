@@ -16,10 +16,17 @@ tools/node_modules/
 
 # Secrets
 .env
-config.yaml   # machine-specific (paths, provider), see config.yaml.example
+
+# Machine-specific config (paths, provider) — see config.yaml.example
+config.yaml
 
 # Derived seed JSON contains verbatim article excerpts — regenerated, not committed.
 seeds/phase1_cards.json
 
 # OS
 .DS_Store
+# Private deployment notes (never share)
+docs/private/
+
+# Debug artifacts
+tools/*_spec.txt

@@ -1,10 +1,13 @@
-"""Optional read API (spec 9.2). Read-only except POST /grade and /signal.
+"""Optional read API (spec 9.2). Read-only except POST /grade, /signal, /decide.
 
 Binds to localhost by default. Any tunnel/exposure is the operator's concern,
 not the package's. Run: `mlearn api` (uvicorn on 127.0.0.1:8311).
 
 sqlite3 connections are per-request (FastAPI handlers run on worker threads;
 a connection created in the app thread must not be shared into them).
+
+`/decide` is the single write path for deck/tinder UIs (feedback + consume in
+one move) — see examples/deck/ for a full consumer.
 """
 from __future__ import annotations
 
@@ -25,6 +28,11 @@ class GradeIn(BaseModel):
 class SignalIn(BaseModel):
     card_id: int
     kind: str
+
+
+class DecideIn(BaseModel):
+    card_id: int
+    action: str  # like | dislike | skip
 
 
 def create_app(cfg: dict | None = None) -> FastAPI:
@@ -66,12 +74,13 @@ def create_app(cfg: dict | None = None) -> FastAPI:
     @app.get("/cards/{card_id}")
     def card(card_id: int, conn=Depends(get_conn)):
         row = conn.execute(
-            """SELECT c.id, c.title, c.hook, c.body_md, c.diagram_type, c.diagram_src,
-                      c.figures_json, c.source_url, c.anchor_quote, c.status,
-                      cl.label AS topic, c.is_wildcard, c.created_at
-               FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
-               WHERE c.id = ?""", (card_id,)
-        ).fetchone()
+                    """SELECT c.id, c.title, c.hook, c.body_md, c.diagram_type, c.diagram_src,
+                             c.figures_json, c.source_url, c.anchor_quote, c.status,
+                             c.infographic_svg, c.infographic_spec,
+                             cl.label AS topic, c.is_wildcard, c.created_at
+                      FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
+                      WHERE c.id = ?""", (card_id,)
+                ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="card not found")
         prompts = conn.execute(
@@ -115,6 +124,16 @@ def create_app(cfg: dict | None = None) -> FastAPI:
                                 detail=f"kind must be one of {sorted(select_mod.SIGNAL_EFFECTS)}")
         try:
             return select_mod.signal(conn, cfg, s.card_id, s.kind)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="card not found")
+
+    @app.post("/decide")
+    def decide(d: DecideIn, conn=Depends(get_conn)):
+        """Tinder-mode decision: feedback + consumption in one move."""
+        if d.action not in ("like", "dislike", "skip"):
+            raise HTTPException(status_code=422, detail="action must be like|dislike|skip")
+        try:
+            return select_mod.decide(conn, cfg, d.card_id, d.action)
         except KeyError:
             raise HTTPException(status_code=404, detail="card not found")
 
