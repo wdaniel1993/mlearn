@@ -311,13 +311,16 @@ def _payload(conn, card_row, kind: str, prompts) -> dict:
     }
 
 
-def next_cards(conn, cfg: dict, count: int) -> dict:
+def next_cards(conn, cfg: dict, count: int, serve: bool = True) -> dict:
     """Discovery serving for the MORNING push: ready cards only, strict FIFO
     (oldest ready first). Taste never touches the send order — it only
     prioritizes ACQUISITION inside generate (taste_strength).
 
-    Retention has its own evening command (due_prompts) — mornings are pure
-    discovery by design."""
+    serve=False is PEEK mode for teaser buttons: it returns the same payload
+    WITHOUT consuming (card stays ready, prompts not scheduled) so the
+    'Review in deck' deep link can position the deck at exactly this card —
+    consumption happens in the deck (swipe). Retention has its own evening
+    command (due_prompts) — mornings are pure discovery by design."""
     count = max(1, int(count))
     today = now().strftime("%Y-%m-%d")
     served_today = conn.execute(
@@ -355,6 +358,8 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
             break
 
     for cid in served_cards:
+        if not serve:
+            break  # peek mode: no consumption (card stays in the deck)
         conn.execute("UPDATE cards SET status = 'served', served_at = ? WHERE id = ?",
                      (_iso(now()), cid))
         src = conn.execute(
@@ -366,8 +371,9 @@ def next_cards(conn, cfg: dict, count: int) -> dict:
         if src:
             conn.execute("UPDATE sources SET cards_served = cards_served + 1 WHERE id = ?",
                          (src["id"],))
-    for pid, due in prompts_to_create:
-        conn.execute("UPDATE prompts SET due_at = ? WHERE id = ? AND due_at IS NULL", (due, pid))
+    if serve:
+        for pid, due in prompts_to_create:
+            conn.execute("UPDATE prompts SET due_at = ? WHERE id = ? AND due_at IS NULL", (due, pid))
     conn.commit()
     return {"cards": out, "reason": "discovery", "served_today": served_today}
 

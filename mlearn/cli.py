@@ -239,10 +239,14 @@ def improve(card_ids: list[int] = typer.Argument(None,
 
 @app.command()
 def next(count: int = typer.Option(1, "--count", min=1),
+         no_serve: bool = typer.Option(False, "--no-serve",
+                                       help="peek mode: return the payload without "
+                                            "consuming (card stays ready — for teaser "
+                                            "buttons that deep-link into the deck)"),
          json_out: bool = typer.Option(False, "--json")):
     """Serve interleaved cards + due prompts (instant; never generates)."""
     cfg, conn = _load_runtime(json_out)
-    result = select_mod.next_cards(conn, cfg, count)
+    result = select_mod.next_cards(conn, cfg, count, serve=not no_serve)
     if json_out:
         _json_out(result)
     else:
