@@ -45,9 +45,13 @@ mlearn grade <prompt_id> <1-4>   # the only external write path
 mlearn signal <card_id> <kind>   # more_like_this|less_like_this|skip|discovery_open
 mlearn decide <card_id> <action> # deck/tinder: like|dislike|skip = feedback + consume
 mlearn improve <ids> --scope banner|content|all [--note "…"]  # in-place polish
+mlearn topic add "<phrase>" [--yes|--dry-run]  # catalog wizard: LLM proposes a topic
+mlearn add-local <path> --topic X  # persistent local source (harvest re-scans it)
+mlearn ingest <path> --topic X     # one-shot local ingestion (no catalog entry)
+mlearn research <item_id>          # quality-gated research pass report
 mlearn search "query"   # semantic search over cards
 mlearn cards            # browse/paginate cards
-mlearn card <id>        # one card + its recall prompts
+mlearn card <id>        # one card + prompts + references + further reading
 mlearn stats            # buffer depth, cluster posteriors, grade dist
 mlearn api              # optional local read API (see examples/)
 ```
