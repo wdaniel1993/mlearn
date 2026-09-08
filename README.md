@@ -28,6 +28,15 @@ feedback.
   inline mermaid diagrams in the body. Every banner keeps its declarative
   spec so it can be re-rendered or tweaked in place.
 
+## Documentation
+
+- [Architecture](docs/architecture.md) — ER diagram, system/runtime/static/
+  dynamic perspectives, gates, concurrency, deployment layout
+- [RFC 2026-09](docs/rfc-2026-09-multi-source-research.md) — multi-source
+  cards, research pass, catalog wizard, local sources (decisions log)
+- [Infographic guidelines](docs/infographic-guidelines.md) — AntV spec
+  contract for banners (lists/sequences/values/compares/nodes + icons)
+
 ## Quickstart
 
 ```bash
@@ -155,9 +164,15 @@ selection).
 - [x] Two-window day: discovery surface (hook + deep link; tap = implicit
       signal) and evening spaced repetition
 
-89 tests (`uv run pytest`). A flock guard prevents concurrent generation runs
+122 tests (`uv run pytest`). A flock guard prevents concurrent generation runs
 (tick vs manual batch). Generation needs any OpenAI-compatible chat endpoint
 (the example config ships with a local one).
+
+## License
+
+MIT — see [LICENSE](LICENSE). Shared source catalogs (`sources.yaml`),
+prompts, and generated content are part of this repo and covered by the same
+license unless noted otherwise.
 
 ## Layout
 
