@@ -84,13 +84,19 @@ def test_due_prompts_evening_retention(db, cfg):
     (morning) stays pure discovery and never returns retention."""
     seed_three(db)
     select.next_cards(db, cfg, 3)  # serve all three, prompts due now +1d
+    # card 1: prompt 1 due -3d (prompts 2,3 stay due +1d);
+    # card 2: prompt 4 due -2d, prompt 5 due -1d (5 must be shadowed)
     db.execute("UPDATE prompts SET due_at = ? WHERE id = 1",
                (select._iso(select.now() - timedelta(days=3)),))
-    db.execute("UPDATE prompts SET due_at = ? WHERE id = 2",
+    db.execute("UPDATE prompts SET due_at = ? WHERE id = 4",
+               (select._iso(select.now() - timedelta(days=2)),))
+    db.execute("UPDATE prompts SET due_at = ? WHERE id = 5",
                (select._iso(select.now() - timedelta(days=1)),))
     db.commit()
     due = select.due_prompts(db, 5)
-    assert [p["prompt_id"] for p in due] == [1, 2]  # oldest first
+    # one prompt PER CARD, oldest due first — card 2's earlier prompt wins
+    # (the triple-teaser regression: one card with 2+ due prompts)
+    assert [p["prompt_id"] for p in due] == [1, 4]
     assert due[0]["card_id"] == 1 and due[0]["title"]
     # morning push: even with due prompts, only discovery cards
     res = select.next_cards(db, cfg, 3)

@@ -381,14 +381,21 @@ def next_cards(conn, cfg: dict, count: int, serve: bool = True) -> dict:
 # ── evening retention (spaced repetition) ───────────────────────────────────
 
 def due_prompts(conn, count: int = 5) -> list[dict]:
-    """Due recall prompts (< = now) on already-served cards, oldest first."""
+    """Due recall prompts (< = now) on already-served cards, oldest first.
+
+    One prompt per card (a card may have several due prompts — the retention
+    push must never repeat the same card in one run; that produced triple
+    identical teasers when one card had 2-3 due prompts).
+    """
     rows = conn.execute(
-        """SELECT pr.id AS prompt_id, pr.question, pr.due_at, pr.last_review,
-                  c.id AS card_id, c.title, c.hook AS hook, cl.label AS topic
-           FROM prompts pr JOIN cards c ON c.id = pr.card_id
-           JOIN clusters cl ON cl.id = c.cluster_id
-           WHERE pr.due_at IS NOT NULL AND pr.due_at <= ? AND c.status = 'served'
-           ORDER BY pr.due_at LIMIT ?""",
+        """SELECT * FROM (
+             SELECT pr.id AS prompt_id, pr.question, pr.due_at, pr.last_review,
+                    c.id AS card_id, c.title, c.hook AS hook, cl.label AS topic,
+                    ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY pr.due_at, pr.id) AS rn
+             FROM prompts pr JOIN cards c ON c.id = pr.card_id
+             JOIN clusters cl ON cl.id = c.cluster_id
+             WHERE pr.due_at IS NOT NULL AND pr.due_at <= ? AND c.status = 'served'
+           ) WHERE rn = 1 ORDER BY due_at LIMIT ?""",
         (_iso(now()), count),
     ).fetchall()
     return [dict(r) for r in rows]
