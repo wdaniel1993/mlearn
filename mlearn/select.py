@@ -389,7 +389,7 @@ def due_prompts(conn, count: int = 5) -> list[dict]:
     """
     rows = conn.execute(
         """SELECT * FROM (
-             SELECT pr.id AS prompt_id, pr.question, pr.due_at, pr.last_review,
+             SELECT pr.id AS prompt_id, pr.question, pr.answer, pr.due_at, pr.last_review,
                     c.id AS card_id, c.title, c.hook AS hook, cl.label AS topic,
                     ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY pr.due_at, pr.id) AS rn
              FROM prompts pr JOIN cards c ON c.id = pr.card_id

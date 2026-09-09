@@ -98,6 +98,7 @@ def test_due_prompts_evening_retention(db, cfg):
     # (the triple-teaser regression: one card with 2+ due prompts)
     assert [p["prompt_id"] for p in due] == [1, 4]
     assert due[0]["card_id"] == 1 and due[0]["title"]
+    assert due[0]["answer"]  # answer rides the queue for the reveal UI
     # morning push: even with due prompts, only discovery cards
     res = select.next_cards(db, cfg, 3)
     assert all(c["kind"] == "discovery" for c in res["cards"])
