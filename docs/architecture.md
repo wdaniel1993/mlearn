@@ -245,7 +245,8 @@ Every card passes, in order:
 | `~/dev/private-notes/Learning/mlearn/cards/` | Obsidian projection |
 
 Ports: REST API `127.0.0.1:8311` (optional; `API_SERVER_KEY`); mini-app
-backend `:8088` behind Tailscale (`http://127.0.0.1:8088`).
+backend `:8088`, reachable over LAN or a private VPN (Tailscale) via the
+app's HTTPS host.
 
 ## 8. Quality gates (summary)
 
