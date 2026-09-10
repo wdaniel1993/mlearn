@@ -37,6 +37,19 @@ feedback.
 - [Infographic guidelines](docs/infographic-guidelines.md) — AntV spec
   contract for banners (lists/sequences/values/compares/nodes + icons)
 
+## Screenshots
+
+The Telegram mini app (the reference UI):
+
+- **Discovery deck** — full lesson per card, swipe to decide, ⏰ retention chip
+  ![deck](docs/screenshots/deck.png)
+- **Retention queue** — due questions one by one, reveal + grade
+  ![retention queue](docs/screenshots/retention-queue.png)
+- **Answer revealed**
+  ![answer reveal](docs/screenshots/retention-revealed.png)
+- **Card detail** — question + grade + sources
+  ![card detail](docs/screenshots/card-detail.png)
+
 ## Quickstart
 
 ```bash
