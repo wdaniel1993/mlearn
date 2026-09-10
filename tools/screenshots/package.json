@@ -1,0 +1,10 @@
+{
+  "name": "mlearn-screenshots",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capture the Telegram mini app UI (deck, retention queue, card detail) as README screenshots.",
+  "type": "commonjs",
+  "dependencies": {
+    "puppeteer-core": "^25.10.0"
+  }
+}

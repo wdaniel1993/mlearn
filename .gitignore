@@ -30,3 +30,4 @@ docs/private/
 
 # Debug artifacts
 tools/*_spec.txt
+tools/screenshots/node_modules/
