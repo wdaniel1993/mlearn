@@ -1,25 +1,27 @@
 """B&W (e-ink) infographic variant — derivation, ID namespacing, gates, backfill.
 
 The mono variant is a pure deterministic function of the color SVG: same
-geometry and typography, colors remapped to inverted max-channel grayscale
-(vivid accents -> dark ink, readable on light pages). Owner's spec: the
-background stays transparent; content must be black/greyish for e-ink.
+geometry and typography, colors remapped for light pages / e-ink. Owner's
+spec: the background stays transparent; content must be black/greyish.
 
-Two transforms beyond the color map:
-- low gradient-stop opacities are raised (faded dark-theme inks would read
-  too faint on light pages);
-- monochrome gradients (all stops one ink) are flattened to solid refs —
-  crisper on e-ink, removes wash-out fade tails.
+Mapping (v2, role-based bands) — the dark theme pairs bright surfaces with
+light ink or dark ink; naive inversion collapses those pairs (bright box +
+white text would both go dark = invisible text). Instead every color token is
+classified by ROLE and mapped into a band that preserves contrast:
+
+- SURFACES (shape fills, background-color) -> light band, 200-250:
+  accent boxes/bars become light greys so dark content reads on them.
+- INKS (text colors, strokes, icon glyphs) -> dark band, 0-140:
+  white text -> black, pale strokes -> dark, icons stay dark.
+
+Role detection: symbol-defs spans and `fill=` on <use>/<text>/<tspan> are
+ink; other shape `fill=` are surfaces; `stroke=`, `color:` styles are ink;
+gradient refs flatten by usage (fill->surface tone, stroke->ink tone).
 
 ID namespacing (`namespace_ids`): every internal id + `url(#…)` / `href="#…"`
-reference is prefixed per card+variant (`ml<sha8><c|b>-`), so any number of
-SVGs — multiple cards or both variants — can share one document without
-cross-contamination (a document-wide `url(#id)` resolves to the FIRST
-definition; duplicate ids across cards silently repaint one card with
-another card's palette).
-
-All attribute regexes accept single- AND double-quoted attributes (AntV
-emits double quotes; hand-written fallback SVGs often use single).
+reference is prefixed `ml<sha8><c|b>-`, so any number of SVGs — multiple
+cards, or both variants — can share one document without cross-contamination
+(a document-wide `url(#id)` resolves to the FIRST definition).
 """
 from __future__ import annotations
 
@@ -30,21 +32,22 @@ import sqlite3
 from . import validate as validate_mod
 from .validate import MAX_INF_CHARS
 
-_GRAY_BOOST = 1.30
 _NS_ATTR = "data-mlearn-ns"
 _Q = r"""["']"""  # either quote style
 
 
-def _map_gray(r: int, g: int, b: int) -> int:
-    v0 = max(r, g, b)  # max-channel: vivid accents -> dark ink
-    v = 255 - v0
-    v = 128 + (v - 128) * _GRAY_BOOST
-    return max(0, min(255, round(v)))
+def _ink(m: int) -> int:
+    v = min(m, 255 - m)
+    return max(0, min(140, round(v * 1.1)))
+
+
+def _surface(m: int) -> int:
+    return 255 - round(55 * m / 255)
 
 
 def _hex2rgb(h: str) -> tuple[int, int, int, str | None]:
     h = h.lstrip("#")
-    if len(h) == 3:
+    if len(h) in (3, 4):
         h = "".join(c * 2 for c in h)
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     a = h[6:8] if len(h) == 8 else None
@@ -53,25 +56,39 @@ def _hex2rgb(h: str) -> tuple[int, int, int, str | None]:
 
 def derive_bw(svg: str) -> str:
     """Color SVG -> mono (e-ink) SVG. Pure byte transform."""
-    def rep_hex(m: re.Match) -> str:
-        r, g, b, a = _hex2rgb(m.group(0))
-        v = _map_gray(r, g, b)
-        return f"#{v:02x}{v:02x}{v:02x}" + (a.lower() if a else "")
+    sym_spans = [(m.start(), m.end())
+                 for m in re.finditer(r"<symbol\b.*?</symbol>", svg, re.S)]
 
-    svg = re.sub(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b", rep_hex, svg)
-    svg = re.sub(r"#[0-9a-fA-F]{3}\b", rep_hex, svg)
+    def in_symbol(pos: int) -> bool:
+        return any(a <= pos < b for a, b in sym_spans)
 
-    def rep_rgb(m: re.Match) -> str:
-        parts = [p.strip() for p in m.group(1).split(",")]
-        r, g, b = (int(float(parts[i])) for i in range(3))
-        v = _map_gray(r, g, b)
-        if len(parts) > 3:
-            return f"rgba({v},{v},{v},{parts[3]})"
-        return f"rgb({v},{v},{v})"
+    # pass 1: flatten gradient refs with a context-driven band.
+    # NOTE: emitted values are stashed behind placeholders — the token pass
+    # must not re-map them (double mapping washes surfaces out).
+    grad_first: dict[str, str] = {}
+    for m in re.finditer(
+            rf"<(linearGradient|radialGradient) id=({_Q})([^\"']+)\2[^>]*>(.*?)</\1>", svg, re.S):
+        cols = re.findall(rf"stop-color=({_Q})([^\"']+)\1", m.group(4))
+        if cols:
+            grad_first[m.group(3)] = cols[0][1]
 
-    svg = re.sub(r"rgb\(([^)]+)\)", rep_rgb, svg)
-    svg = re.sub(r"rgba\(([^)]+)\)", rep_rgb, svg)
+    flat_out: list[str] = []
 
+    def flat(m: re.Match) -> str:
+        attr, gid = m.group(1), m.group(3)
+        col = grad_first.get(gid)
+        if not col or not col.startswith("#"):
+            return m.group(0)
+        r, g, b, _a = _hex2rgb(col)
+        mx = max(r, g, b)
+        v = _surface(mx) if attr == "fill" else _ink(mx)
+        flat_out.append(f"#{v:02x}{v:02x}{v:02x}")
+        return f"{attr}=\"__MLFLAT{len(flat_out) - 1}__\""
+
+    svg = re.sub(rf"(fill|stroke)=({_Q})url\(#([^)]+)\)\2", flat, svg)
+
+    # raise low stop-opacities (kept for parity: matters for surviving
+    # mixed gradients; flattened refs no longer depend on them)
     def boost_stop(m: re.Match) -> str:
         op = float(m.group(2))
         if 0.0 < op < 0.55:
@@ -80,14 +97,61 @@ def derive_bw(svg: str) -> str:
 
     svg = re.sub(rf"stop-opacity=({_Q})([0-9.]+)\1", boost_stop, svg)
 
-    for tag in ("linearGradient", "radialGradient"):
-        for _q, gid, block in re.findall(
-                rf"<{tag} id=({_Q})([^\"']+)\1[^>]*>(.*?)</{tag}>", svg, re.S):
-            cols = re.findall(rf"stop-color=({_Q})([^\"']+)\1", block)
-            cols = [c for _q, c in cols]
-            if cols and len(set(c.lower() for c in cols)) == 1:
-                svg = svg.replace(f"url(#{gid})", cols[0])
-    return svg
+    # pass 2: per-token role mapping (hex incl. alpha + rgb()/rgba())
+    out: list[str] = []
+    last = 0
+    token_re = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]+\)")
+    for m in token_re.finditer(svg):
+        out.append(svg[last:m.start()])
+        tok = m.group(0)
+        p = m.start()
+        if tok.startswith("#"):
+            r, g, b, a = _hex2rgb(tok)
+            alpha = a if a else ""
+        else:
+            parts = [x.strip() for x in tok[tok.index("(") + 1:tok.index(")")].split(",")]
+            try:
+                r, g, b = (int(float(parts[i])) for i in range(3))
+            except ValueError:
+                out.append(tok)  # unsupported color syntax — leave as-is
+                last = m.end()
+                continue
+            alpha = ("," + parts[3]) if len(parts) > 3 else ""
+        mx = max(r, g, b)
+        if in_symbol(p):
+            role = "ink"
+        else:
+            before = svg[max(0, p - 180):p]
+            if "background-color:" in before[-30:]:
+                role = "surface"
+            elif 'stroke="' in before[-12:] or "stroke='" in before[-12:]:
+                role = "ink"
+            elif before.rstrip().endswith("color:"):
+                role = "ink"
+            elif 'fill="' in before[-8:] or "fill='" in before[-8:]:
+                # fill on <use>/<text>/<tspan> -> ink; other shapes -> surface
+                lt = before.rfind("<")
+                tag = before[lt:lt + 8].lower().lstrip("<")
+                role = ("ink" if (tag.startswith("use") or tag.startswith("text")
+                                  or tag.startswith("tspan")) else "surface")
+            else:
+                role = "ink"
+        v = _ink(mx) if role == "ink" else _surface(mx)
+        if tok.startswith("#"):
+            out.append(f"#{v:02x}{v:02x}{v:02x}{alpha}")
+        elif alpha:
+            out.append(f"rgba({v},{v},{v}{alpha})")
+        else:
+            out.append(f"rgb({v},{v},{v})")
+        last = m.end()
+    out.append(svg[last:])
+    result = "".join(out)
+
+    # resolve pass-1 placeholders (mapped exactly once)
+    def unflatten(m: re.Match) -> str:
+        return flat_out[int(m.group(1))]
+
+    return re.sub(r"__MLFLAT(\d+)__", unflatten, result)
 
 
 def namespace_ids(svg: str, suffix: str, base: str | None = None) -> tuple[str, str | None]:
@@ -162,10 +226,13 @@ def prepare_variants(svg: str | None) -> tuple[str | None, str | None, str | Non
     return color, bw, None
 
 
-def backfill_bw(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
-    """Derive + namespace variants for every stored infographic. Idempotent:
-    rows whose color SVG is namespaced and that already have a mono variant
-    are skipped."""
+def backfill_bw(conn: sqlite3.Connection, dry_run: bool = False,
+                force: bool = False) -> dict:
+    """Derive + namespace variants for every stored infographic.
+
+    Idempotent: rows whose color SVG is namespaced and that already have a
+    mono variant are skipped — unless force=True (e.g. after a mapping
+    change: re-derive everything from the stored color SVGs)."""
     rows = conn.execute(
         "SELECT id, infographic_svg, infographic_svg_bw FROM cards "
         "WHERE infographic_svg IS NOT NULL AND infographic_svg != ''"
@@ -174,7 +241,7 @@ def backfill_bw(conn: sqlite3.Connection, dry_run: bool = False) -> dict:
              "bw_failed": 0, "ns_skipped": 0, "warnings": []}
     for row in rows:
         has_ns = _NS_ATTR in row["infographic_svg"]
-        if has_ns and row["infographic_svg_bw"]:
+        if not force and has_ns and row["infographic_svg_bw"]:
             stats["skipped"] += 1
             continue
         color, bw, warn = prepare_variants(row["infographic_svg"])

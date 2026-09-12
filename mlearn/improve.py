@@ -210,7 +210,12 @@ def _apply(conn, card_id: int, row, patch: dict) -> None:
         if f in patch:
             col_fields[f] = patch[f]
     if "infographic_svg" in patch:
-        col_fields["infographic_svg"] = patch["infographic_svg"]
+        # banner changed: re-namespace + re-derive the mono variant so the
+        # stored bw can never go stale against the new color art
+        from . import bw as bw_mod
+        color, bw_svg, _warn = bw_mod.prepare_variants(patch["infographic_svg"])
+        col_fields["infographic_svg"] = color or patch["infographic_svg"]
+        col_fields["infographic_svg_bw"] = bw_svg
     if "infographic_spec" in patch:
         col_fields["infographic_spec"] = patch["infographic_spec"]
     if "prompts" in patch:

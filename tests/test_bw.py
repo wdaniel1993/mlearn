@@ -22,15 +22,35 @@ def test_derive_recolors_and_keeps_alpha():
     out = bw.derive_bw(COLOR_SVG)
     assert "ff356a" not in out.lower()
     assert 'stop-opacity="0.684"' in out          # 0.36 * 1.9 boosted
-    assert "rgba(0,0,0,0.5)" in out               # white -> black ink, alpha kept
-    assert "#fdfdfd" in out                       # dark panel -> near-white
+    assert "rgba(200,200,200,0.5)" in out         # shape fill -> light surface, alpha kept
+    assert "#f8f8f8" in out                       # dark panel bg -> near-white surface
     assert "Hello memory" in out                  # content untouched
 
 
-def test_derive_flattens_monochrome_gradients():
+def test_derive_ink_roles():
+    """v2: text/strokes/icons go dark; box fills go light."""
+    out = bw.derive_bw(COLOR_SVG)
+    assert 'fill="#000000"' in out                # white text -> black ink
+    assert "#c8c8c8" in out                       # gradient fill ref -> light surface tone
+
+
+def test_derive_flattens_gradient_refs():
     out = bw.derive_bw(COLOR_SVG)
     assert "url(#g1)" not in out
-    assert 'fill="#000000"' in out                # vivid accent -> solid dark ink
+
+
+def test_derive_role_bands():
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+           '<path d="M0 0h50v50H0z" fill="#22c55e"/>'                 # box -> light
+           '<use fill="#1f1f1f" href="#i1" width="10" height="10"/>'   # icon -> dark
+           '<span style="color:#ffffff">x</span>'                      # text -> black
+           '<path d="M0 90h100" stroke="#D9D9D9"/>'                    # stroke -> dark
+           '</svg>')
+    out = bw.derive_bw(svg)
+    assert 'fill="#d5d5d5"' in out                # 22c55e (max 197) -> surface tone
+    assert 'fill="#222222"' in out                # 1f1f1f icon ink stays dark
+    assert "color:#000000" in out                 # white text -> black
+    assert 'stroke="#2a2a2a"' in out              # pale stroke -> dark
 
 
 def test_derive_handles_single_quoted_attrs():
@@ -105,3 +125,28 @@ def test_backfill_updates_db_and_is_idempotent(db):
     assert ok
     stats2 = bw.backfill_bw(db)
     assert stats2["skipped"] == 1 and stats2["updated"] == 0
+
+
+def test_improve_apply_rederives_mono(db):
+    """A banner update (improve) must refresh mono + namespacing, never stale."""
+    from mlearn.improve import _apply
+    cid = db_mod.insert_card(
+        db, item_id=None, cluster_label="technology", title="t", hook="h",
+        body_md="body text", diagram_type="concept", diagram_src="",
+        infographic_svg=COLOR_SVG, figures_json="[]",
+        source_url="https://example.com/x", anchor_quote="q",
+        prompts=[{"question": "q?", "answer": "a"}],
+    )
+    row = db.execute("SELECT * FROM cards WHERE id = ?", (cid,)).fetchone()
+    new_svg = COLOR_SVG.replace("#FF356A", "#22c55e").replace("#1F1F1F", "#334155")
+    _apply(db, cid, row, {"infographic_svg": new_svg,
+                          "infographic_spec": "infographic list-grid-badge-card"})
+    r2 = db.execute(
+        "SELECT infographic_svg, infographic_svg_bw, infographic_spec "
+        "FROM cards WHERE id = ?", (cid,)).fetchone()
+    assert "data-mlearn-ns" in r2["infographic_svg"]
+    assert "ff356a" not in r2["infographic_svg"].lower()  # new art stored
+    assert r2["infographic_svg_bw"] and "data-mlearn-ns" in r2["infographic_svg_bw"]
+    ok, _ = bw.qa_mono_svg(r2["infographic_svg_bw"])
+    assert ok
+    assert r2["infographic_spec"] == "infographic list-grid-badge-card"

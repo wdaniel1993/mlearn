@@ -105,6 +105,7 @@ def seed(file: Path = typer.Argument(..., help="JSON file of hand-written cards"
             title=card["title"], hook=card["hook"], body_md=card["body_md"],
             diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
             infographic_svg=color_svg, infographic_svg_bw=bw_svg,
+            infographic_spec=str(card.get("infographic_spec") or ""),
             figures_json=figures_json, source_url=card["source_url"],
             anchor_quote=card["anchor_quote"], prompts=card["prompts"],
         )
@@ -601,6 +602,8 @@ def card(card_id: int = typer.Argument(...),
 @app.command()
 def bw(backfill: bool = typer.Option(False, "--backfill",
                                      help="process every stored infographic (idempotent)"),
+       force: bool = typer.Option(False, "--force",
+                                  help="re-derive even when a variant already exists (mapping change)"),
        dry_run: bool = typer.Option(False, "--dry-run"),
        card_id: int | None = typer.Option(None, "--card", help="single card id"),
        json_out: bool = typer.Option(False, "--json")):
@@ -635,7 +638,7 @@ def bw(backfill: bool = typer.Option(False, "--backfill",
         else:
             print("use --backfill or --card <id>")
         raise typer.Exit(2)
-    stats = bw_mod.backfill_bw(conn, dry_run=dry_run)
+    stats = bw_mod.backfill_bw(conn, dry_run=dry_run, force=force)
     if json_out:
         _json_out(stats)
     else:

@@ -108,16 +108,24 @@ lives in the mlearn-ops skill: `references/infographic-gallery.md`.
 Every infographic also gets a black & white variant (`infographic_svg_bw`,
 schema v3) for e-ink screens and the markdown/Obsidian projection. It is a
 **pure deterministic function of the stored color SVG** — same geometry and
-typography, only color tokens remapped (`mlearn/bw.py`):
+typography, only color tokens remapped (`mlearn/bw.py`).
 
-- inverted max-channel grayscale (`255 - max(r,g,b)`, contrast boost 1.30):
-  vivid accents become dark ink, readable on light pages — WCAG luminance
-  would map saturated blues/purples to faint light grays, so max-channel wins;
-- low gradient-stop opacities raised (dark-theme inks fade to near-invisible
-  on white; e.g. 0.36 → 0.684);
-- monochrome gradients (all stops one ink) flattened to solid refs — crisper
-  on e-ink, kills wash-out fade tails;
-- background stays transparent (owner's spec); content must be black/greyish.
+**Role-based bands (v2).** The dark theme pairs bright surfaces with light or
+dark ink; per-color inversion collapses those pairs (a bright box + white
+text would both go dark → invisible text). Instead each color token is
+classified by role and mapped into a contrast-preserving band:
+
+- **Surfaces** (shape `fill`, `background-color`) → light band 200–250:
+  accent boxes/bars become light greys, so dark content reads on them.
+- **Inks** (text colors, `stroke`, icon glyphs) → dark band 0–140:
+  white text → black, pale strokes → dark, icons stay dark.
+
+Role detection: `symbol`-def spans and `fill=` on `<use>/<text>/<tspan>` are
+ink; other shape `fill=` are surfaces; `stroke=` and `color:` styles are ink;
+gradient refs flatten by usage (fill → surface tone, stroke → ink tone; the
+most opaque stop wins). Each token is mapped exactly once — flattened refs
+are stashed behind placeholders so the token pass cannot re-map them (double
+mapping washes surfaces out).
 
 **ID namespacing** (`namespace_ids`): every internal id + `url(#…)` /
 `href="#…"` reference is prefixed `ml<sha8><c|b>-` so any number of SVGs —
@@ -132,7 +140,10 @@ saturation scan (no colored tokens left, no `hsl()`). Mono is best-effort:
 a failed variant is dropped with a warning, the card ships color-only.
 
 Wiring: `prepare_variants()` runs at insert (both lanes) and via
-`mlearn bw --backfill` (idempotent, `--card <id>` for one). The vault
-projection embeds the MONO file by default (`{stem}_infographic_mono.svg`)
-and keeps the color SVG as a sibling. The mini app renders both and offers a
-◐ toggle (global preference).
+`mlearn bw --backfill [--force]` (idempotent; `--force` re-derives after a
+mapping change, `--card <id>` for one). The vault projection embeds the MONO
+file by default (`{stem}_infographic_mono.svg`) and keeps the color SVG as a
+sibling. The mini app renders both and offers a ◐ toggle (global preference).
+Corpus check: all stored variants render with zero saturated pixels (headless
+render scan); spot-checked templates: quadrant, swimlane, timeline, snake,
+grid, chart-column, dagre.
