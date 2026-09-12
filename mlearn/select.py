@@ -304,6 +304,8 @@ def _payload(conn, card_row, kind: str, prompts) -> dict:
         "diagram_type": card_row["diagram_type"],
         "diagram_src": card_row["diagram_src"],
         "infographic_svg": card_row["infographic_svg"],
+        "infographic_svg_bw": (card_row["infographic_svg_bw"]
+                               if "infographic_svg_bw" in card_row.keys() else None),
         "source_url": card_row["source_url"],
         "anchor_quote": card_row["anchor_quote"],
         "prompts": [{"prompt_id": p["id"], "question": p["question"],

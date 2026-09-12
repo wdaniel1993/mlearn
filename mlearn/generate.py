@@ -15,6 +15,7 @@ from pathlib import Path
 import httpx
 
 from . import config as config_mod
+from . import bw as bw_mod
 from . import db as db_mod
 from . import embed as embed_mod
 from . import project as project_mod
@@ -649,12 +650,16 @@ def _run_generation_locked(conn, cfg: dict, count: int, do_harvest: bool,
                     detail = " | ".join(reasons[-3:]) if reasons else "unknown"
                     note(f"DROP (3 attempts): {claim['url']} :: {detail}")
                     continue
+                color_svg, bw_svg, bw_warn = bw_mod.prepare_variants(card.get("infographic_svg"))
+                if bw_warn:
+                    note(f"mono variant dropped ({bw_warn}): {claim['url']}")
                 card_id = db_mod.insert_card(
                     conn, item_id=claim["id"], cluster_label=claim["topic"],
                     title=card["title"], hook=card["hook"], body_md=card["body_md"],
                     diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
-                    infographic_svg=card.get("infographic_svg"),
+                    infographic_svg=color_svg,
                     infographic_spec=str(card.get("infographic_spec") or ""),
+                    infographic_svg_bw=bw_svg,
                     figures_json=card["figures_json"], source_url=claim["url"],
                     anchor_quote=card["anchor_quote"],
                     embedding=embed_mod.pack(claim["vec"]) if claim["vec"] else None,

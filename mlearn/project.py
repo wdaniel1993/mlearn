@@ -96,9 +96,17 @@ def write_cards(conn: sqlite3.Connection, cards_dir: str | Path,
         path = topic_dir / f"{stem}.md"
         inf_name = None
         if card["infographic_svg"]:
-            inf_name = f"{stem}_infographic.svg"
-            (topic_dir / inf_name).write_text(card["infographic_svg"], encoding="utf-8")
-            expected.add(topic_dir / inf_name)
+            # e-ink/markdown default = the mono variant (transparent bg, dark
+            # ink); the color SVG stays as a sibling file for reference.
+            color_name = f"{stem}_infographic.svg"
+            (topic_dir / color_name).write_text(card["infographic_svg"], encoding="utf-8")
+            expected.add(topic_dir / color_name)
+            if card["infographic_svg_bw"]:
+                inf_name = f"{stem}_infographic_mono.svg"
+                (topic_dir / inf_name).write_text(card["infographic_svg_bw"], encoding="utf-8")
+                expected.add(topic_dir / inf_name)
+            else:
+                inf_name = color_name
         refs = conn.execute(
             """SELECT ci.role, i.title, i.url FROM card_items ci
                JOIN items i ON i.id = ci.item_id

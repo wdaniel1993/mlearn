@@ -47,8 +47,11 @@ The Telegram mini app (the reference UI):
   ![retention queue](docs/screenshots/retention-queue.png)
 - **Answer revealed**
   ![answer reveal](docs/screenshots/retention-revealed.png)
-- **Card detail** — question + grade + sources
+- **Card detail** — full lesson with infographic + sources
   ![card detail](docs/screenshots/card-detail.png)
+- **Mono (e-ink) variant** — same infographic toggled to the black & white
+  variant (◐ button) that the markdown projection embeds by default
+  ![card detail mono](docs/screenshots/card-detail-mono.png)
 
 ## Quickstart
 

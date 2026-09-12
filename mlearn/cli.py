@@ -8,6 +8,7 @@ import typer
 import yaml
 
 from . import config as config_mod
+from . import bw as bw_mod
 from . import db as db_mod
 from . import generate as generate_mod
 from . import harvest as harvest_mod
@@ -96,11 +97,14 @@ def seed(file: Path = typer.Argument(..., help="JSON file of hand-written cards"
             conn, url=card["source_url"], title=card["title"], source_id=source_id,
             content_hash=f"seed:{card['source_url']}", raw_path=None,
         )
+        color_svg, bw_svg, bw_warn = bw_mod.prepare_variants(card.get("infographic_svg"))
+        if bw_warn:
+            results.append({"title": card["title"], "ok": True, "bw_warning": bw_warn})
         card_id = db_mod.insert_card(
             conn, item_id=item_id, cluster_label=card["cluster"],
             title=card["title"], hook=card["hook"], body_md=card["body_md"],
             diagram_type=card["diagram_type"], diagram_src=card["diagram_src"],
-            infographic_svg=card.get("infographic_svg"),
+            infographic_svg=color_svg, infographic_svg_bw=bw_svg,
             figures_json=figures_json, source_url=card["source_url"],
             anchor_quote=card["anchor_quote"], prompts=card["prompts"],
         )
@@ -592,6 +596,52 @@ def card(card_id: int = typer.Argument(...),
     else:
         print(f"#{data['id']} [{data['topic']}] {data['title']} ({data['status']})")
         print(f"  prompts: {len(data['prompts'])}")
+
+
+@app.command()
+def bw(backfill: bool = typer.Option(False, "--backfill",
+                                     help="process every stored infographic (idempotent)"),
+       dry_run: bool = typer.Option(False, "--dry-run"),
+       card_id: int | None = typer.Option(None, "--card", help="single card id"),
+       json_out: bool = typer.Option(False, "--json")):
+    """Derive the B&W (e-ink) infographic variant: namespace ids, grayscale
+    map, mono gate. With --card, one card; with --backfill, the whole corpus."""
+    cfg, conn = _load_runtime(json_out)
+    if card_id is not None:
+        row = conn.execute(
+            "SELECT id, infographic_svg, infographic_svg_bw FROM cards WHERE id = ?",
+            (card_id,)).fetchone()
+        if row is None or not row["infographic_svg"]:
+            if json_out:
+                _json_out({"error": "card not found or has no infographic"})
+            else:
+                print("card not found or has no infographic")
+            raise typer.Exit(1)
+        color, bw_svg, warn = bw_mod.prepare_variants(row["infographic_svg"])
+        conn.execute("UPDATE cards SET infographic_svg = ?, infographic_svg_bw = ? WHERE id = ?",
+                     (color or row["infographic_svg"], bw_svg, row["id"]))
+        conn.commit()
+        result = {"card_id": card_id, "mono": bool(bw_svg), "warning": warn}
+        if json_out:
+            _json_out(result)
+        else:
+            print(f"card {card_id}: mono {'ok' if bw_svg else 'FAILED'} {warn or ''}")
+        if not bw_svg:
+            raise typer.Exit(1)
+        return
+    if not backfill:
+        if json_out:
+            _json_out({"error": "use --backfill or --card <id>"})
+        else:
+            print("use --backfill or --card <id>")
+        raise typer.Exit(2)
+    stats = bw_mod.backfill_bw(conn, dry_run=dry_run)
+    if json_out:
+        _json_out(stats)
+    else:
+        print(f"scanned {stats['scanned']} | updated {stats['updated']} | "
+              f"skipped {stats['skipped']} | mono failed {stats['bw_failed']} | "
+              f"ns kept as-is {stats['ns_skipped']}")
 
 
 @app.command()

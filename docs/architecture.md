@@ -61,7 +61,7 @@ Wikipedia) quality-gate _before_ generation; `validate` gates _after_.
 |---|---|
 | `cli.py` | Typer CLI; every command supports `--json`; sole write path |
 | `config.py` | config.yaml (machine) + sources.yaml (forkable allowlist/catalog) |
-| `db.py` | SQLite schema v2, idempotent migrations, backfills |
+| `db.py` | SQLite schema v3, idempotent migrations, backfills |
 | `harvest.py` | RSS (robots/ETag), Wikipedia API, local sources → items |
 | `local.py` | scan/extract/ingest local files (md/txt, docx/rtf/html, optional PDF) |
 | `topic.py` | catalog wizard: LLM proposes topic + guardrail + seed sources |
@@ -72,6 +72,7 @@ Wikipedia) quality-gate _before_ generation; `validate` gates _after_.
 | `validate.py` | gates C3/C4/C6/C8 + figure/verbatim/abbreviation checks |
 | `visualqa.py` | banner QA: icon refs, label legibility, liveliness |
 | `infographic.py` | AntV spec render/QA bridge to `tools/render_infographic.mjs` |
+| `bw.py` | mono (e-ink) variant: derive, ID namespacing, saturation gate, backfill |
 | `improve.py` | in-place polish (content/banner/all), full re-gate of changed fields |
 | `select.py` | serving: FIFO ready pool, FSRS due prompts, `next --no-serve` peek |
 | `taste.py` / `novelty.py` | embedding taste rank; wildcard topic birth |
@@ -81,8 +82,8 @@ Wikipedia) quality-gate _before_ generation; `validate` gates _after_.
 
 ## 4. Data perspective (ER)
 
-Effective schema (v2 — `kind`, `items.topic`, `card_items`, `card_links` are
-additive migrations; `init_db` is idempotent):
+Effective schema (v3 — `kind`, `items.topic`, `card_items`, `card_links`,
+`cards.infographic_svg_bw` are additive migrations; `init_db` is idempotent):
 
 ```mermaid
 erDiagram
@@ -137,7 +138,8 @@ erDiagram
         text body_md "200-500 words"
         text diagram_src "inline mermaid, parsed"
         text infographic_spec "AntV DSL source of truth"
-        text infographic_svg "derived, dark theme"
+        text infographic_svg "derived, dark theme, ids namespaced"
+        text infographic_svg_bw "mono (e-ink) variant, derived"
         text figures_json "verbatim figure data"
         text anchor_quote "verbatim ≤25 words"
         text status "ready|served|archived"

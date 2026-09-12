@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .config import DEFAULTS as _DEFAULTS
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -206,6 +206,8 @@ def init_db(conn: sqlite3.Connection) -> None:
     if "infographic_spec" not in ccols:
         conn.execute(
             "ALTER TABLE cards ADD COLUMN infographic_spec TEXT NOT NULL DEFAULT ''")
+    if "infographic_svg_bw" not in ccols:
+        conn.execute("ALTER TABLE cards ADD COLUMN infographic_svg_bw TEXT")
     row = conn.execute("SELECT version FROM schema_version").fetchone()
     if row is None:
         conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
@@ -320,6 +322,7 @@ def insert_item(conn: sqlite3.Connection, *, url: str, title: str | None,
 def insert_card(conn: sqlite3.Connection, *, item_id: int | None, cluster_label: str,
                 title: str, hook: str, body_md: str, diagram_type: str, diagram_src: str,
                 infographic_svg: str | None, infographic_spec: str = "",
+                infographic_svg_bw: str | None = None,
                 figures_json: str | None,
                 source_url: str, anchor_quote: str,
                 embedding: bytes | None = None, is_wildcard: bool = False,
@@ -337,12 +340,13 @@ def insert_card(conn: sqlite3.Connection, *, item_id: int | None, cluster_label:
         raise ValueError(f"unknown cluster label: {cluster_label}")
     cur = conn.execute(
         """INSERT INTO cards (item_id, cluster_id, title, hook, body_md, diagram_type,
-                              diagram_src, infographic_svg, infographic_spec, figures_json, source_url,
+                              diagram_src, infographic_svg, infographic_spec, infographic_svg_bw,
+                              figures_json, source_url,
                               anchor_quote, embedding, status, is_wildcard, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ready', ?, ?)""",
         (item_id, cluster["id"], title, hook, body_md, diagram_type, diagram_src,
-         infographic_svg, infographic_spec, figures_json, source_url, anchor_quote, embedding,
-         int(is_wildcard), utcnow()),
+         infographic_svg, infographic_spec, infographic_svg_bw, figures_json, source_url,
+         anchor_quote, embedding, int(is_wildcard), utcnow()),
     )
     assert cur.lastrowid is not None
     card_id = cur.lastrowid

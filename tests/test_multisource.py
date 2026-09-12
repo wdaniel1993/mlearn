@@ -59,7 +59,14 @@ def test_schema_v2_tables_exist(env):
     names = {r["name"] for r in conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
     assert {"card_items", "card_links"} <= names
-    assert conn.execute("SELECT version FROM schema_version").fetchone()["version"] == 2
+    assert conn.execute("SELECT version FROM schema_version").fetchone()["version"] == 3
+
+
+def test_schema_v3_bw_column(env):
+    """v3 adds the mono (e-ink) infographic column."""
+    cfg, conn = env
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(cards)").fetchall()}
+    assert "infographic_svg_bw" in cols
 
 
 def test_migration_backfills_primary_references(env):

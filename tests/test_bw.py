@@ -1,0 +1,107 @@
+"""B&W (e-ink) variant: derive, id namespacing, mono gate, backfill."""
+import re
+
+from mlearn import bw
+from mlearn import db as db_mod
+
+COLOR_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 140">'
+    '<defs><linearGradient id="g1">'
+    '<stop offset="0%" stop-color="#FF356A" stop-opacity="0.36"/>'
+    '<stop offset="100%" stop-color="#FF356A" stop-opacity="0"/>'
+    "</linearGradient></defs>"
+    '<rect width="400" height="140" fill="#1F1F1F"/>'
+    '<text x="10" y="60" fill="#ffffff">Hello memory</text>'
+    '<path d="M0 0h10" fill="url(#g1)"/>'
+    '<circle r="4" fill="rgba(255,255,255,0.5)"/>'
+    "</svg>"
+)
+
+
+def test_derive_recolors_and_keeps_alpha():
+    out = bw.derive_bw(COLOR_SVG)
+    assert "ff356a" not in out.lower()
+    assert 'stop-opacity="0.684"' in out          # 0.36 * 1.9 boosted
+    assert "rgba(0,0,0,0.5)" in out               # white -> black ink, alpha kept
+    assert "#fdfdfd" in out                       # dark panel -> near-white
+    assert "Hello memory" in out                  # content untouched
+
+
+def test_derive_flattens_monochrome_gradients():
+    out = bw.derive_bw(COLOR_SVG)
+    assert "url(#g1)" not in out
+    assert 'fill="#000000"' in out                # vivid accent -> solid dark ink
+
+
+def test_derive_handles_single_quoted_attrs():
+    single = COLOR_SVG.replace('"', "'")
+    out = bw.derive_bw(single)
+    assert "ff356a" not in out.lower()
+    assert "stop-opacity='0.684'" in out
+    assert "url(#g1)" not in out
+
+
+def test_namespace_rewrites_refs_and_is_idempotent():
+    ns, prefix = bw.namespace_ids(COLOR_SVG, "c")
+    assert prefix and prefix.startswith("ml") and prefix.endswith("c-")
+    ids = set(re.findall(r'id="([^"]+)"', ns))
+    assert ids and all(i.startswith(prefix) for i in ids)
+    refs = set(re.findall(r"url\(#([^)]+)\)", ns)) | set(re.findall(r'href="#([^"]+)"', ns))
+    assert refs <= ids                            # no dangling references
+    assert "data-mlearn-ns" in ns
+    again, prefix2 = bw.namespace_ids(ns, "c")
+    assert prefix2 is None and again == ns        # idempotent
+
+
+def test_namespace_single_quoted_attrs():
+    single = COLOR_SVG.replace('"', "'")
+    ns, prefix = bw.namespace_ids(single, "c")
+    assert prefix
+    assert f"id='{prefix}g1'" in ns
+    assert f"url(#{prefix}g1)" in ns
+
+
+def test_namespace_keeps_original_when_refs_would_dangle():
+    broken = COLOR_SVG.replace("<circle", '<use href="#missing"/><circle', 1)
+    out, prefix = bw.namespace_ids(broken, "c")
+    assert prefix is None and out == broken
+
+
+def test_gate_rejects_saturated_and_accepts_derived():
+    ok, _ = bw.qa_mono_svg(bw.derive_bw(COLOR_SVG))
+    assert ok
+    ok2, err = bw.qa_mono_svg(COLOR_SVG)          # raw color svg must fail
+    assert not ok2 and "saturated" in err
+
+
+def test_prepare_variants_end_to_end():
+    color, mono, warn = bw.prepare_variants(COLOR_SVG)
+    assert warn is None and color and mono
+    assert "data-mlearn-ns" in color
+    ok, _ = bw.qa_mono_svg(mono)
+    assert ok
+    # both variants coexist without id collisions (distinct prefixes)
+    cids = set(re.findall(r'id="(ml[^"]*?)-', color))
+    mids = set(re.findall(r'id="(ml[^"]*?)-', mono))
+    assert cids and mids and cids.isdisjoint(mids)
+    assert bw.prepare_variants(None) == (None, None, None)
+
+
+def test_backfill_updates_db_and_is_idempotent(db):
+    cid = db_mod.insert_card(
+        db, item_id=None, cluster_label="technology", title="t", hook="h",
+        body_md="body text", diagram_type="concept", diagram_src="",
+        infographic_svg=COLOR_SVG, figures_json="[]",
+        source_url="https://example.com/x", anchor_quote="q",
+        prompts=[{"question": "q?", "answer": "a"}],
+    )
+    stats = bw.backfill_bw(db)
+    assert stats["updated"] == 1 and stats["bw_failed"] == 0
+    row = db.execute(
+        "SELECT infographic_svg, infographic_svg_bw FROM cards WHERE id = ?",
+        (cid,)).fetchone()
+    assert "data-mlearn-ns" in row["infographic_svg"]
+    ok, _ = bw.qa_mono_svg(row["infographic_svg_bw"])
+    assert ok
+    stats2 = bw.backfill_bw(db)
+    assert stats2["skipped"] == 1 and stats2["updated"] == 0

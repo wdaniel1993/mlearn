@@ -87,7 +87,7 @@ def create_app(cfg: dict | None = None) -> FastAPI:
         row = conn.execute(
                     """SELECT c.id, c.title, c.hook, c.body_md, c.diagram_type, c.diagram_src,
                              c.figures_json, c.source_url, c.anchor_quote, c.status,
-                             c.infographic_svg, c.infographic_spec,
+                             c.infographic_svg, c.infographic_svg_bw, c.infographic_spec,
                              cl.label AS topic, c.is_wildcard, c.created_at
                       FROM cards c JOIN clusters cl ON cl.id = c.cluster_id
                       WHERE c.id = ?""", (card_id,)

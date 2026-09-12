@@ -130,10 +130,32 @@ function mintInitData() {
   if (!(await page.evaluate(() => document.querySelector('#ret-ans').style.display === 'block')))
     throw new Error('answer reveal failed');
   await shot('retention-revealed');
-  await page.evaluate(() => document.querySelector('#ret-cardlink').click());
+  if (process.env.SHOT_CARD) {
+    await page.goto(APP_URL + '?startapp=learn_' + process.env.SHOT_CARD + '_ret&v=' + Date.now(), { waitUntil: 'networkidle2', timeout: 60000 });
+  } else {
+    await page.evaluate(() => document.querySelector('#ret-cardlink').click());
+  }
   await page.waitForFunction(() => document.querySelector('#view-lcard').classList.contains('active'), { timeout: 20000 });
+  await new Promise((r) => setTimeout(r, 800));
   await shot('card-detail');
   console.log('VIEW CARD:', await page.evaluate(() => ((document.querySelector('#l-card h3') || {}).textContent || '').slice(0, 55)));
+
+  // mono (e-ink) variant of the same card, when it carries one; the toggle
+  // button only exists for cards with a derived bw variant
+  const toggle = await page.$('#lc-inf .m-svgtoggle');
+  if (toggle) {
+    await toggle.click();
+    await new Promise((r) => setTimeout(r, 500));
+    const monoOn = await page.evaluate(() => {
+      const b = document.querySelector('#lc-inf');
+      return b && b.classList.contains('mono');
+    });
+    if (!monoOn) throw new Error('mono toggle did not flip');
+    await shot('card-detail-mono');
+    console.log('MONO VARIANT OK');
+  } else {
+    console.log('detail card has no infographic — mono shot skipped (set SHOT_CARD=<id> to force one)');
+  }
 
   // 2 — discovery deck
   await page.goto(APP_URL + '?startapp=deck&v=' + Date.now(), { waitUntil: 'networkidle2', timeout: 60000 });

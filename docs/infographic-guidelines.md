@@ -102,3 +102,37 @@ lives in the mlearn-ops skill: `references/infographic-gallery.md`.
   baseline ≥75% of canvas height).
 - Banned everywhere: scripts, `on*=`/`javascript:`, external hrefs, hero
   mermaid, missing main image.
+
+## 7. Mono (e-ink) variant — derived, not re-rendered
+
+Every infographic also gets a black & white variant (`infographic_svg_bw`,
+schema v3) for e-ink screens and the markdown/Obsidian projection. It is a
+**pure deterministic function of the stored color SVG** — same geometry and
+typography, only color tokens remapped (`mlearn/bw.py`):
+
+- inverted max-channel grayscale (`255 - max(r,g,b)`, contrast boost 1.30):
+  vivid accents become dark ink, readable on light pages — WCAG luminance
+  would map saturated blues/purples to faint light grays, so max-channel wins;
+- low gradient-stop opacities raised (dark-theme inks fade to near-invisible
+  on white; e.g. 0.36 → 0.684);
+- monochrome gradients (all stops one ink) flattened to solid refs — crisper
+  on e-ink, kills wash-out fade tails;
+- background stays transparent (owner's spec); content must be black/greyish.
+
+**ID namespacing** (`namespace_ids`): every internal id + `url(#…)` /
+`href="#…"` reference is prefixed `ml<sha8><c|b>-` so any number of SVGs —
+multiple cards, or both variants — can share one DOM without `url(#id)`
+collisions (document-wide lookups resolve to the FIRST definition; duplicate
+ids silently repaint one card with another card's palette). The color SVG is
+namespaced too. Rewrites that would break references (pre-existing dangling
+refs) are skipped and the original kept.
+
+Gates: the mono variant reuses the standard SVG checks (non-strict) plus a
+saturation scan (no colored tokens left, no `hsl()`). Mono is best-effort:
+a failed variant is dropped with a warning, the card ships color-only.
+
+Wiring: `prepare_variants()` runs at insert (both lanes) and via
+`mlearn bw --backfill` (idempotent, `--card <id>` for one). The vault
+projection embeds the MONO file by default (`{stem}_infographic_mono.svg`)
+and keeps the color SVG as a sibling. The mini app renders both and offers a
+◐ toggle (global preference).

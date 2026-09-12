@@ -18,10 +18,14 @@ node shoot.js
 ```
 
 This regenerates `retention-queue.png`, `retention-revealed.png`,
-`card-detail.png`, and `deck.png`. The script fails loudly (non-zero exit)
-if a captured surface doesn't match expectations (missing question, wrong
-grade-button count, reveal not opening) — so it doubles as a smoke test of
-the app's UI wiring.
+`card-detail.png`, `card-detail-mono.png`, and `deck.png`. The script fails
+loudly (non-zero exit) if a captured surface doesn't match expectations
+(missing question, wrong grade-button count, reveal not opening, mono
+toggle not flipping) — so it doubles as a smoke test of the app's UI wiring.
+
+`SHOT_CARD=<id>` forces the card used for the detail + mono shots (pick a
+served card that has an infographic; default: first due card via the
+retention queue's "View card" link).
 
 ## How it works
 
